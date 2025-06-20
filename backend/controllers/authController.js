@@ -1,15 +1,13 @@
 // backend/controllers/authController.js
 
 const jwt = require('jsonwebtoken');
-const { promisify } = require('util');
+const { promisify } = require('util'); // Promisify util'i
 const db = require('../config/db'); // Veritabanı bağlantısı
 const bcrypt = require('bcryptjs'); // Şifre karşılaştırma ve hashleme için
 const crypto = require('crypto'); // Token oluşturma için
+// AppError ve diğer özel hata sınıflarınızı buradan import edin
 const { AppError, BadRequestError, UnauthorizedError, NotFoundError, ForbiddenError } = require('../errors/AppError');
-
-// E-posta gönderme yardımcı fonksiyonunu import edin
-// Yol, sizin dosya yapınıza göre doğru olmalı. Eğer 'emailService.js' 'backend/config' altında ise bu doğru yoldur.
-const sendEmail = require('../config/emailService');
+const sendEmail = require('../config/emailService'); // E-posta gönderme yardımcı fonksiyonunu import edin
 
 // JWT Token oluşturma ve çerez olarak gönderme yardımcı fonksiyonu
 const signToken = (id) => {
@@ -58,6 +56,11 @@ exports.register = async (req, res, next) => {
     try {
         const { username, email, password, passwordConfirm, first_name, last_name, phone_number, address, role } = req.body;
 
+        // Basit şifre doğrulama (daha kapsamlı validasyonlar eklenebilir)
+        if (password !== passwordConfirm) {
+            return next(new BadRequestError('Şifreler uyuşmuyor.'));
+        }
+
         // Şifreleri hashle
         const hashedPassword = await bcrypt.hash(password, 12);
 
@@ -77,20 +80,20 @@ exports.register = async (req, res, next) => {
         createSendToken(newUser, 201, res);
 
         // Opsiyonel: E-posta doğrulama token'ı gönderme (eğer entegre edilecekse)
-        // const verificationToken = crypto.randomBytes(32).toString('hex');
-        // const hashedVerificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
-        // const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 saat geçerli
-        // await db.query('UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?', [hashedVerificationToken, formatMysqlDateTime(verificationExpires), newUserId]);
-        // const verificationURL = `${req.protocol}://${req.get('host')}/api/auth/verifyEmail/${verificationToken}`;
-        // try {
-        //     await sendEmail({
-        //         email: newUser.email,
-        //         subject: 'E-posta Adresinizi Doğrulayın',
-        //         text: `E-posta adresinizi doğrulamak için şu adrese tıklayın: ${verificationURL}`
-        //     });
-        // } catch (emailError) {
-        //     console.error('E-posta doğrulama maili gönderilemedi:', emailError);
-        // }
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        const hashedVerificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
+        const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 saat geçerli
+        await db.query('UPDATE users SET email_verification_token = ?, email_verification_expires = ? WHERE id = ?', [hashedVerificationToken, formatMysqlDateTime(verificationExpires), newUserId]);
+        const verificationURL = `${req.protocol}://${req.get('host')}/api/auth/verifyEmail/${verificationToken}`;
+        try {
+            await sendEmail({
+                email: newUser.email,
+                subject: 'E-posta Adresinizi Doğrulayın',
+                text: `E-posta adresinizi doğrulamak için şu adrese tıklayın: ${verificationURL}`
+            });
+        } catch (emailError) {
+            console.error('E-posta doğrulama maili gönderilemedi:', emailError);
+        }
 
     } catch (error) {
         // MySQL duplicate entry error (örneğin aynı email veya username)
@@ -144,6 +147,7 @@ exports.forgotPassword = async (req, res, next) => {
 
     if (!user) {
         // Güvenlik nedeniyle, kullanıcının var olup olmadığını ifşa etmeyin
+        // Ancak bu durumda, gerçekten bulunamadığında hata döndürmek daha doğru.
         return next(new NotFoundError('Bu e-posta adresine sahip bir kullanıcı bulunamadı.'));
     }
 
@@ -167,14 +171,18 @@ exports.forgotPassword = async (req, res, next) => {
         );
 
         // 4) Kullanıcıya şifre sıfırlama e-postası gönder
-        const resetURL = `${req.protocol}://${req.get('host')}/api/auth/resetPassword/${resetToken}`;
+        // Frontend'de bu linkin nasıl işleneceğine bağlı olarak bu URL farklılık gösterebilir.
+        // Örneğin, http://localhost:3000/reset-password?token=TOKEN
+        const resetURL = `${req.protocol}://${req.get('host')}/api/auth/resetPassword/${resetToken}`; // Backend URL'i
+        // const resetURLFrontend = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`; // Frontend URL'i
 
         try {
             await sendEmail({
                 email: user.email,
                 subject: 'Şifre sıfırlama talebiniz (Sadece 10 dakika geçerlidir)',
                 text: `Şifrenizi sıfırlamak için şu adrese gidin: ${resetURL}\n\nBu bağlantı 10 dakika içinde sona erecektir.`,
-                // html: `<p>Şifrenizi sıfırlamak için <a href="${resetURL}">buraya tıklayın</a>. Bu bağlantı 10 dakika içinde sona erecektir.</p>`
+                // HTML formatlı e-posta isterseniz:
+                // html: `<p>Şifrenizi sıfırlamak için <a href="${resetURLFrontend}">buraya tıklayın</a>. Bu bağlantı 10 dakika içinde sona erecektir.</p>`
             });
             res.status(200).json({ status: 'success', message: 'Şifre sıfırlama bağlantısı e-postanıza gönderildi!' });
         } catch (emailError) {
@@ -185,36 +193,91 @@ exports.forgotPassword = async (req, res, next) => {
         }
 
     } catch (error) {
-        console.error('Şifremi unuttum hatası:', error);
+        console.error('Şifremi unuttum işlemi sırasında hata:', error); // Genel hata logu
         next(new AppError('Şifre sıfırlama işlemi sırasında bir hata oluştu.', 500));
     }
 };
 
-// Şifre sıfırlama
+// Şifre sıfırlama token'ını kontrol etme (GET isteği için - tarayıcıdan gelen linki yakalamak için)
+exports.resetPasswordTokenCheck = async (req, res, next) => {
+
+    const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+
+    const currentTime = new Date();
+    const formattedCurrentTime = formatMysqlDateTime(currentTime);
+
+    const [rows] = await db.query(
+        'SELECT id, username, reset_password_expires FROM users WHERE reset_password_token = ? AND reset_password_expires > ?',
+        [hashedToken, formattedCurrentTime]
+    );
+    const user = rows[0];
+
+
+    if (!user) {
+        return next(new BadRequestError('Şifre sıfırlama bağlantısı geçersiz veya süresi dolmuş. Lütfen tekrar deneyin.'));
+    }
+
+    // Token geçerliyse, başarılı bir yanıt döndür.
+    // Frontend bu yanıta göre şifre sıfırlama formunu gösterebilir.
+    res.status(200).json({
+        status: 'success',
+        message: 'Şifre sıfırlama token\'ı geçerli. Yeni şifrenizi belirleyebilirsiniz.',
+        token: req.params.token // Frontend'in kullanması için token'ı geri gönderebiliriz
+    });
+};
+
+
+// Şifre sıfırlama (PATCH isteği için - yeni şifreyi belirlemek için)
 exports.resetPassword = async (req, res, next) => {
+
     // 1) URL'den gelen token'ı hashle
     const hashedToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
 
+    const currentTime = new Date();
+    const formattedCurrentTime = formatMysqlDateTime(currentTime);
+
+
     // 2) Hashlenmiş token'ı ve geçerlilik süresini kontrol et
     const [rows] = await db.query(
-        'SELECT id, username FROM users WHERE reset_password_token = ? AND reset_password_expires > ?',
-        [hashedToken, formatMysqlDateTime(new Date())] // Geçerli tarih formatı ile karşılaştır
+        'SELECT id, username, reset_password_expires FROM users WHERE reset_password_token = ? AND reset_password_expires > ?',
+        [hashedToken, formattedCurrentTime] // Geçerli tarih formatı ile karşılaştır
     );
     const user = rows[0];
+
+    if (user) {
+    }
+
 
     if (!user) {
         return next(new BadRequestError('Token geçersiz veya süresi dolmuş. Lütfen tekrar deneyin.'));
     }
 
-    // 3) Yeni şifreyi güncelle
-    const hashedPassword = await bcrypt.hash(req.body.newPassword, 12);
+    // 3) Yeni şifre ve şifre onayı var mı ve uyuşuyor mu kontrol et
+    const { newPassword, newPasswordConfirm } = req.body;
+    if (!newPassword || !newPasswordConfirm) {
+        return next(new BadRequestError('Lütfen yeni şifrenizi ve şifre onayınızı girin.'));
+    }
+    if (newPassword !== newPasswordConfirm) {
+        return next(new BadRequestError('Yeni şifreler uyuşmuyor.'));
+    }
+    // Daha fazla şifre karmaşıklığı doğrulaması eklenebilir.
+
+    // 4) Yeni şifreyi hashle ve veritabanına kaydet
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
     await db.query(
         'UPDATE users SET password = ?, reset_password_token = NULL, reset_password_expires = NULL WHERE id = ?',
         [hashedPassword, user.id]
     );
 
-    // 4) Kullanıcıya otomatik giriş yap
-    createSendToken(user, 200, res);
+    // 5) Kullanıcıya otomatik giriş yap (yeni bir JWT oluştur ve gönder)
+    // Yeni kullanıcı bilgilerini çekelim (şifre hariç)
+    const [updatedUserRows] = await db.query('SELECT id, username, email, first_name, last_name, phone_number, address, role, created_at, updated_at, is_active, email_verified FROM users WHERE id = ?', [user.id]);
+    const updatedUser = updatedUserRows[0];
+    
+    createSendToken(updatedUser, 200, res);
+
+    // Opsiyonel olarak, sadece mesaj döndürmek isterseniz:
+    // res.status(200).json({ status: 'success', message: 'Şifreniz başarıyla güncellendi.' });
 };
 
 
@@ -341,18 +404,29 @@ exports.updateMyPassword = async (req, res, next) => {
         return next(new UnauthorizedError('Mevcut şifreniz yanlış.'));
     }
 
+    // Yeni şifre doğrulama
+    if (!newPassword || !newPasswordConfirm) {
+        return next(new BadRequestError('Lütfen yeni şifrenizi ve şifre onayınızı girin.'));
+    }
+    if (newPassword !== newPasswordConfirm) {
+        return next(new BadRequestError('Yeni şifreler uyuşmuyor.'));
+    }
+    // Daha fazla şifre karmaşıklığı doğrulaması eklenebilir.
+
     // 2) Yeni şifreyi hashle ve veritabanına kaydet
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await db.query('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, req.user.id]);
 
     // 3) JWT'yi yeniden oluştur ve gönder (şifre değiştiği için eski token'ı geçersiz kıl)
     // Bu, kullanıcının tekrar giriş yapmasını gerektirmeden oturumunu güvence altına alır.
-    createSendToken(req.user, 200, res); // req.user zaten güncel ID ve role sahip olmalı
+    // Güncel kullanıcı bilgilerini tekrar çekelim
+    const [updatedUserRows] = await db.query('SELECT id, username, email, first_name, last_name, phone_number, address, role, created_at, updated_at, is_active, email_verified FROM users WHERE id = ?', [req.user.id]);
+    const updatedUser = updatedUserRows[0];
+    
+    createSendToken(updatedUser, 200, res);
 
-    res.status(200).json({
-        status: 'success',
-        message: 'Şifreniz başarıyla güncellendi.',
-    });
+    // Sadece mesaj döndürmek isterseniz:
+    // res.status(200).json({ status: 'success', message: 'Şifreniz başarıyla güncellendi.' });
 };
 
 

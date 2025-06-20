@@ -1,91 +1,32 @@
-// backend/routes/authRoutes.js
+// backend/routes/authRoutes.js (Güncellenmiş Kısım)
 
 const express = require('express');
-const router = express.Router();
 const authController = require('../controllers/authController');
-const validationMiddleware = require('../middleware/validationMiddleware');
-// authMiddleware'den sadece 'protect' fonksiyonunu içeri aktarıyoruz
-const { protect } = require('../middleware/authMiddleware');
+const authMiddleware = require('../middleware/authMiddleware');
 
-// --- PUBLIC ROTLAR (Kimlik Doğrulama GEREKMEZ) ---
-// Bu rotalara herhangi bir kullanıcı, hatta oturum açmamış kullanıcılar bile erişebilir.
+const router = express.Router();
 
-// Kullanıcı Kaydı (Register)
-router.post(
-    '/register',
-    validationMiddleware.userRegisterValidation,
-    validationMiddleware.validate,
-    authController.register
-);
+// Public rotalar (oturum açmayı gerektirmez)
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+router.post('/forgotPassword', authController.forgotPassword);
 
-// Kullanıcı Girişi (Login)
-router.post(
-    '/login',
-    validationMiddleware.userLoginValidation,
-    validationMiddleware.validate,
-    authController.login
-);
+// Şifre sıfırlama için hem GET (tarayıcıdan erişim) hem de PATCH (yeni şifreyi gönderme)
+// Her iki rota da authMiddleware.protect'in dışında olmalı!
+router.get('/resetPassword/:token', authController.resetPasswordTokenCheck); // <-- Yeni GET rotası (Opsiyonel, sadece token kontrolü için)
+router.patch('/resetPassword/:token', authController.resetPassword); // Mevcut PATCH rotası
 
-// Şifremi Unuttum (Forgot Password)
-// Bu rota, kullanıcının oturum açamaması durumunda şifresini sıfırlaması için kullanılır, bu yüzden public olmalı.
-router.post(
-    '/forgotPassword',
-    validationMiddleware.forgotPasswordValidation,
-    validationMiddleware.validate,
-    authController.forgotPassword
-);
-
-// Şifre Sıfırlama (Reset Password)
-// Bu rota da şifremi unuttum akışının bir parçasıdır ve public olmalıdır.
-router.patch(
-    '/resetPassword/:token',
-    validationMiddleware.resetPasswordValidation,
-    validationMiddleware.validate,
-    authController.resetPassword
-);
-
-// E-posta Doğrulama (Verify Email)
-// E-posta doğrulaması için de kullanıcının zaten oturum açmış olması gerekmez.
-router.get(
-    '/verifyEmail/:token',
-    validationMiddleware.verifyEmailValidation,
-    validationMiddleware.validate,
-    authController.verifyEmail
-);
-
-// Çıkış Yapma (Logout)
-// Çıkış işlemi genellikle herkese açık olabilir, çünkü sadece sunucu tarafındaki JWT çerezini temizler.
-router.post('/logout', authController.logout);
+router.get('/verifyEmail/:token', authController.verifyEmail);
 
 
-// ----------------------------------------------------
+// Oturum açmayı gerektiren rotalar
+// Buradan itibaren tüm rotalar authMiddleware.protect tarafından korunur
+router.use(authMiddleware.protect);
 
-
-// --- KORUMALI ROTLAR (Kimlik Doğrulama GEREKİR) ---
-// 'router.use(protect);' satırı, bu noktadan sonra tanımlanan TÜM rotalara 'protect' middleware'ini uygular.
-// Yani, bu rotalara erişmek için geçerli bir JWT'ye sahip bir kullanıcının oturum açmış olması gerekir.
-router.use(protect);
-
-// Kendi profil bilgilerini görüntüleme
 router.get('/me', authController.getMe);
-
-// Kendi profil bilgilerini güncelleme
-router.patch(
-    '/updateMyProfile',
-    validationMiddleware.userProfileUpdateValidation,
-    validationMiddleware.validate,
-    authController.updateMyProfile
-);
-
-// Şifremi değiştirme
-router.patch(
-    '/updateMyPassword',
-    validationMiddleware.userChangePasswordValidation,
-    validationMiddleware.validate,
-    authController.updateMyPassword
-);
-
-// Kendi hesabını silme (Öncelikle onay alınması tavsiye edilir)
+router.patch('/updateMyProfile', authController.updateMyProfile);
+router.patch('/updateMyPassword', authController.updateMyPassword);
 router.delete('/deleteMyAccount', authController.deleteMyAccount);
+
 
 module.exports = router;
