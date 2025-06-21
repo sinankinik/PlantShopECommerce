@@ -9,13 +9,24 @@ const uploadMiddleware = require('../middleware/uploadMiddleware'); // Resim yü
 
 // Public routes (herkes erişebilir)
 router.get('/', productController.getAllProducts);
-router.get('/:id', productController.getProductById);
+
+// Yeni: Düşük stoklu ürünleri getir (admin yetkisi gerektirir)
+// Bu rota, '/:id' rotasından ÖNCE gelmelidir ki doğru eşleşsin.
+// Aynı zamanda 'protect' ve 'restrictTo('admin')' middleware'lerini doğrudan uyguluyoruz.
+router.get('/low-stock', protect, restrictTo('admin'), productController.getLowStockProducts);
+
+
+router.get('/:id', productController.getProductById); // Bu rota şimdi '/low-stock'tan sonra geldiği için doğru çalışacaktır.
 
 // Protected routes (admin yetkisi gerektirenler)
-// Bu middleware'i burada kullanarak, altındaki tüm rotaların kimlik doğrulaması gerektirmesini sağlıyoruz.
-// Ancak varyant rotaları için protect ve restrictTo ayrı ayrı belirtilmiştir.
-// Bu duruma göre ya genel .use(protect) kaldırılır, ya da varyant rotalarına protect eklenmez.
-// Mevcut yapıda her ikisini de kullanmak, güvenlik katmanını vurgular.
+// Aşağıdaki 'router.use(protect)' satırı zaten bu noktadan sonraki tüm rotalar için geçerliydi.
+// Ancak yukarıdaki '/low-stock' rotasını bu bloğun dışına taşıdığımız için,
+// o rota için 'protect' ve 'restrictTo('admin')' i ayrı ayrı belirtmemiz gerekti.
+// Mevcut yapınızı korumak adına aşağıdaki 'router.use(protect)' kalabilir,
+// ancak '/low-stock' için ekstra olarak belirtilmesi önemlidir.
+
+// Eğer tüm aşağıdaki rotalar zaten protect ve restrictTo('admin') altında olması gerekiyorsa,
+// bu router.use() satırı mantıklıdır.
 router.use(protect); // protect middleware'i tüm admin rotaları için genel olarak uygulanır
 
 router.post(
@@ -50,10 +61,9 @@ router.post(
     '/:id/upload-images',
     restrictTo('admin'),
     uploadMiddleware.uploadProductImages, // Multer middleware'i (array için)
-    productController.uploadProductImages // Resim bilgilerini veritabanına kaydetme (galeri tablosu)
+    productController*.uploadProductImages // Resim bilgilerini veritabanına kaydetme (galeri tablosu)
 );
 */
-
 // Ürün varyantları ile ilgili rotalar (admin yetkisi gerektirir)
 router
     .route('/:productId/variants')

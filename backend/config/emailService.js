@@ -1,11 +1,11 @@
-// config/emailService.js
+// backend/config/emailService.js
 
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
     port: process.env.EMAIL_PORT,
-    secure: process.env.EMAIL_SECURE === 'true',
+    secure: process.env.EMAIL_SECURE === 'true', // secure değeri string 'true' olarak geliyorsa boolean true'ya çevir
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -31,7 +31,9 @@ const sendEmail = async (options) => { // 'options' objesini parametre olarak al
         };
 
         await transporter.sendMail(mailOptions);
+        console.log(`E-posta '${options.subject}' konusuyala '${options.email}' adresine başarıyla gönderildi.`); // Başarılı log
     } catch (error) {
+        console.error('E-posta gönderme başarısız oldu:', error); // Detaylı hata logu
         throw new Error('E-posta gönderme başarısız.');
     }
 };

@@ -9,16 +9,15 @@ exports.createOrder = async (req, res, next) => {
     const user_id = req.user.id;
     const { shipping_address, order_items } = req.body;
 
-    let connection; // connection'ı try bloğu dışında tanımlıyoruz ki finally bloğunda erişebilelim
+    let connection;
 
     try {
-        connection = await db.getConnection(); // Veritabanı bağlantısını al
-        await connection.beginTransaction(); // İşlemi başlat
+        connection = await db.getConnection();
+        await connection.beginTransaction();
 
         let calculatedTotalAmount = 0;
-        const itemsToDecreaseStock = []; // Stok azaltma için kullanılacak ürün listesi
+        const itemsToDecreaseStock = [];
 
-        // Sipariş kalemlerini döngüye alarak stok kontrolü ve fiyat hesaplama
         for (const item of order_items) {
             const { product_id, variant_id, quantity } = item;
 
@@ -31,10 +30,9 @@ exports.createOrder = async (req, res, next) => {
             let productName = '';
             let productCheckResult;
 
-            // Varyantlı ürün ise varyant stoğunu ve fiyatını kontrol et
             if (variant_id) {
                 [productCheckResult] = await connection.query(
-                    'SELECT pv.stock_quantity, pv.price, p.name FROM product_variants pv JOIN products p ON pv.product_id = p.id WHERE pv.id = ? AND pv.product_id = ? FOR UPDATE', // Satırı kilitliyoruz
+                    'SELECT pv.stock_quantity, pv.price, p.name FROM product_variants pv JOIN products p ON pv.product_id = p.id WHERE pv.id = ? AND pv.product_id = ? FOR UPDATE',
                     [variant_id, product_id]
                 );
                 if (productCheckResult.length === 0) {
@@ -45,9 +43,8 @@ exports.createOrder = async (req, res, next) => {
                 productName = productCheckResult[0].name;
 
             } else {
-                // Ana ürün ise ana ürün stoğunu ve fiyatını kontrol et
                 [productCheckResult] = await connection.query(
-                    'SELECT stock_quantity, price, name FROM products WHERE id = ? FOR UPDATE', // Satırı kilitliyoruz
+                    'SELECT stock_quantity, price, name FROM products WHERE id = ? FOR UPDATE',
                     [product_id]
                 );
                 if (productCheckResult.length === 0) {
@@ -58,14 +55,12 @@ exports.createOrder = async (req, res, next) => {
                 productName = productCheckResult[0].name;
             }
 
-            // Yetersiz stok kontrolü
             if (currentStock < quantity) {
                 throw new BadRequestError(`Ürün '${productName}' (ID: ${product_id}${variant_id ? ', Varyant ID: ' + variant_id : ''}) stokta yeterli miktarda bulunmuyor. Mevcut: ${currentStock}, İstendi: ${quantity}.`);
             }
 
-            calculatedTotalAmount += currentPrice * quantity; // Toplam tutarı hesapla
+            calculatedTotalAmount += currentPrice * quantity;
 
-            // Sipariş kalemi için o anki fiyat ve ürün adını kaydet
             item.price = currentPrice;
             item.product_name = productName;
 
@@ -76,14 +71,12 @@ exports.createOrder = async (req, res, next) => {
             });
         }
 
-        // Sipariş kaydını orders tablosuna ekle
         const [orderResult] = await connection.query(
             'INSERT INTO orders (user_id, total_amount, shipping_address, status) VALUES (?, ?, ?, ?)',
             [user_id, calculatedTotalAmount, shipping_address, 'pending']
         );
         const orderId = orderResult.insertId;
 
-        // Sipariş kalemlerini order_items tablosuna ekle
         for (const item of order_items) {
             await connection.query(
                 'INSERT INTO order_items (order_id, product_id, product_variant_id, quantity, price_at_order) VALUES (?, ?, ?, ?, ?)',
@@ -91,10 +84,9 @@ exports.createOrder = async (req, res, next) => {
             );
         }
 
-        // Stokları azaltma işlemini çağırıyoruz, aynı bağlantıyı iletiyoruz
         await decreaseStock(connection, itemsToDecreaseStock);
 
-        await connection.commit(); // Tüm işlemler başarılıysa işlemi onayla
+        await connection.commit();
 
         res.status(201).json({
             status: 'success',
@@ -104,13 +96,13 @@ exports.createOrder = async (req, res, next) => {
 
     } catch (err) {
         if (connection) {
-            await connection.rollback(); // Hata oluşursa işlemi geri al
+            await connection.rollback();
         }
         console.error('Sipariş oluşturulurken hata:', err);
         next(err instanceof AppError ? err : new AppError('Sipariş oluşturulurken bir hata oluştu.', 500));
     } finally {
         if (connection) {
-            connection.release(); // Bağlantıyı havuza geri bırak
+            connection.release();
         }
     }
 };
@@ -201,7 +193,6 @@ exports.getUserOrders = async (req, res, next) => {
     }
 };
 
-
 // Sipariş durumu güncelleme (Admin yetkisi gerektirir)
 exports.updateOrderStatus = async (req, res, next) => {
     let connection;
@@ -221,7 +212,6 @@ exports.updateOrderStatus = async (req, res, next) => {
         connection = await db.getConnection();
         await connection.beginTransaction();
 
-        // Güncellenecek siparişi kilitliyoruz
         const [existingOrders] = await connection.query('SELECT status FROM orders WHERE id = ? FOR UPDATE', [orderId]);
         if (existingOrders.length === 0) {
             throw new NotFoundError('Güncellenecek sipariş bulunamadı.');
@@ -245,7 +235,7 @@ exports.updateOrderStatus = async (req, res, next) => {
             }));
 
             if (itemsToIncreaseStock.length > 0) {
-                await increaseStock(connection, itemsToIncreaseStock); // BURADAKİ DEĞİŞİKLİK
+                await increaseStock(connection, itemsToIncreaseStock);
             }
         }
 
@@ -259,7 +249,7 @@ exports.updateOrderStatus = async (req, res, next) => {
             throw new AppError('Sipariş güncellenemedi, bir hata oluştu.', 500);
         }
 
-        await connection.commit(); // İşlemi onayla
+        await connection.commit();
 
         res.status(200).json({
             status: 'success',
@@ -269,13 +259,13 @@ exports.updateOrderStatus = async (req, res, next) => {
 
     } catch (err) {
         if (connection) {
-            await connection.rollback(); // Hata durumunda geri al
+            await connection.rollback();
         }
         console.error('Sipariş durumu güncellenirken hata:', err);
         next(err instanceof AppError ? err : new AppError('Sipariş durumu güncellenirken bir hata oluştu.', 500));
     } finally {
         if (connection) {
-            connection.release(); // Bağlantıyı havuza geri bırak
+            connection.release();
         }
     }
 };
@@ -290,14 +280,12 @@ exports.updateOrder = async (req, res, next) => {
         connection = await db.getConnection();
         await connection.beginTransaction();
 
-        // Mevcut siparişi kontrol et ve kilit (FOR UPDATE)
         const [existingOrderRows] = await connection.query('SELECT id, user_id, status FROM orders WHERE id = ? FOR UPDATE', [orderId]);
         const existingOrder = existingOrderRows[0];
         if (!existingOrder) {
             throw new NotFoundError('Güncellenecek sipariş bulunamadı.');
         }
 
-        // Yetkilendirme kontrolü
         if (req.user.role !== 'admin') {
             throw new ForbiddenError('Siparişleri güncelleme yetkiniz yok.');
         }
@@ -305,7 +293,6 @@ exports.updateOrder = async (req, res, next) => {
         const updates = [];
         const params = [];
 
-        // Durum güncellemesi varsa
         if (status !== undefined) {
             const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
             if (!validStatuses.includes(status)) {
@@ -314,7 +301,6 @@ exports.updateOrder = async (req, res, next) => {
             updates.push('status = ?');
             params.push(status);
 
-            // Stok artırma mantığı (iptal/iade durumunda)
             if ((existingOrder.status !== 'cancelled' && status === 'cancelled') ||
                 (existingOrder.status !== 'refunded' && status === 'refunded')) {
                 const [orderItems] = await connection.query(
@@ -327,18 +313,16 @@ exports.updateOrder = async (req, res, next) => {
                     quantity: item.quantity
                 }));
                 if (itemsToIncreaseStock.length > 0) {
-                    await increaseStock(connection, itemsToIncreaseStock); // BURADAKİ DEĞİŞİKLİK
+                    await increaseStock(connection, itemsToIncreaseStock);
                 }
             }
         }
 
-        // total_amount güncellemesi
         if (total_amount !== undefined) {
             updates.push('total_amount = ?');
             params.push(total_amount);
         }
 
-        // shipping_address güncellemesi
         if (shipping_address !== undefined) {
             updates.push('shipping_address = ?');
             params.push(shipping_address);
@@ -348,7 +332,7 @@ exports.updateOrder = async (req, res, next) => {
             throw new BadRequestError('Güncellenecek en az bir alan sağlamalısınız.');
         }
 
-        params.push(orderId); // WHERE koşulu için ID
+        params.push(orderId);
 
         const [result] = await connection.query(`UPDATE orders SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, params);
 
@@ -356,7 +340,7 @@ exports.updateOrder = async (req, res, next) => {
             throw new AppError('Sipariş güncellenemedi, bir hata oluştu.', 500);
         }
 
-        await connection.commit(); // Transaction'ı onayla
+        await connection.commit();
 
         res.status(200).json({
             status: 'success',
@@ -365,17 +349,16 @@ exports.updateOrder = async (req, res, next) => {
         });
     } catch (err) {
         if (connection) {
-            await connection.rollback(); // Hata durumunda transaction'ı geri al
+            await connection.rollback();
         }
         console.error('Sipariş güncellenirken hata:', err);
         next(err instanceof AppError ? err : new AppError('Sipariş güncellenirken bir hata oluştu.', 500));
     } finally {
         if (connection) {
-            connection.release(); // Bağlantıyı havuza geri bırak
+            connection.release();
         }
     }
 };
-
 
 // Sipariş silme (Sadece admin için, dikkatli kullanılmalı)
 exports.deleteOrder = async (req, res, next) => {
@@ -390,9 +373,9 @@ exports.deleteOrder = async (req, res, next) => {
         connection = await db.getConnection();
         await connection.beginTransaction();
 
-        // NOT: Sipariş silindiğinde stoklar otomatik olarak geri eklenmez.
+        // Stok geri ekleme mantığı burada yoktur, çünkü bu tamamen silme işlemidir.
         // Eğer silinen bir siparişin ürünlerinin stoğa geri eklenmesi isteniyorsa,
-        // bu mantık buraya `increaseStock` çağrısıyla eklenmelidir.
+        // bu mantık buraya increaseStock çağrısıyla eklenmelidir.
         // Ancak çoğu e-ticaret sisteminde "silme" yerine "iptal etme" tercih edilir.
 
         // Önce sipariş kalemlerini sil

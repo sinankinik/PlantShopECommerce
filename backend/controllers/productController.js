@@ -4,8 +4,11 @@ const db = require('../config/db');
 const { AppError, NotFoundError, BadRequestError } = require('../errors/AppError');
 const APIFeatures = require('../utils/apiFeatures');
 // const fs = require('fs'); // Eğer hata durumunda yüklenen resimleri silmek isterseniz import edin
-const { uploadSingleProductImage } = require('../utils/uploadHandler');
 
+// make sure this import is correct based on your upload handler file
+// For example, if you have it directly in productController, you might not need this.
+// But if you moved Multer config to uploadHandler, keep it.
+const { uploadSingleProductImage } = require('../utils/uploadHandler');
 
 
 // Ürün oluşturma
@@ -240,6 +243,58 @@ exports.uploadProductImages = async (req, res, next) => {
     }
 };
 */
+
+/**
+ * Düşük stoklu ürünleri ve varyantları getirir.
+ * Sadece admin yetkisi gerektirir.
+ * @param {object} req - İstek nesnesi
+ * @param {object} res - Yanıt nesnesi
+ * @param {function} next - Sonraki middleware fonksiyonu
+ */
+exports.getLowStockProducts = async (req, res, next) => {
+    try {
+        // Düşük stok eşiği (bu değeri .env dosyanızdan alabilirsiniz veya sabit tutabilirsiniz)
+        const LOW_STOCK_THRESHOLD = process.env.LOW_STOCK_THRESHOLD || 5;
+
+        // Düşük stoklu ana ürünleri çek
+        const [lowStockProducts] = await db.query(
+            'SELECT id, name, stock_quantity FROM products WHERE stock_quantity <= ? ORDER BY stock_quantity ASC',
+            [LOW_STOCK_THRESHOLD]
+        );
+
+        // Düşük stoklu ürün varyantlarını çek
+        const [lowStockVariants] = await db.query(
+            `SELECT
+                pv.id AS variant_id,
+                pv.sku,
+                pv.color,
+                pv.size,
+                pv.material,
+                pv.stock_quantity AS variant_stock_quantity,
+                p.name AS product_name
+             FROM product_variants pv
+             JOIN products p ON pv.product_id = p.id
+             WHERE pv.stock_quantity <= ?
+             ORDER BY pv.stock_quantity ASC`,
+            [LOW_STOCK_THRESHOLD]
+        );
+
+        // Hem ürün hem de varyant listesini döndür
+        res.status(200).json({
+            status: 'success',
+            message: 'Düşük stoklu ürünler ve varyantlar başarıyla getirildi.',
+            data: {
+                lowStockProducts,
+                lowStockVariants,
+                threshold: LOW_STOCK_THRESHOLD
+            }
+        });
+
+    } catch (err) {
+        console.error('Düşük stoklu ürünleri getirirken hata oluştu:', err);
+        next(new AppError('Düşük stoklu ürünler getirilirken bir hata oluştu.', 500));
+    }
+};
 
 
 // --- Ürün Varyantları Kontrolleri ---

@@ -10,11 +10,12 @@ const path = require('path'); // Node.js'in 'path' modülünü import edin (dosy
 const db = require('./config/db'); // MySQL bağlantısı
 const authRoutes = require('./routes/authRoutes'); // Kimlik doğrulama rotaları
 const productRoutes = require('./routes/productRoutes'); // Ürün rotalarını import edin
-const orderRoutes = require('./routes/orderRoutes'); // Sipariş rotalarını import edin <-- Bu satırın olduğundan emin olun
+const orderRoutes = require('./routes/orderRoutes'); // Sipariş rotalarını import edin
 
 
 // AppError ve diğer özel hata sınıflarını buradan import edin
 const { AppError, UnauthorizedError, ForbiddenError, NotFoundError, BadRequestError } = require('./errors/AppError');
+const cronJobs = require('./utils/cronJobs'); // <-- YENİ EKLEME: Cron job'ları import et
 
 
 // Ortam değişkenlerini yükle (process.env erişimi için)
@@ -57,11 +58,14 @@ app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 
 // Sipariş rotalarını ekle
-app.use('/api/orders', orderRoutes); // <-- Bu satırın olduğundan emin olun
+app.use('/api/orders', orderRoutes);
 
 // Diğer rotalarınız buraya eklenebilir
 // app.use('/api/users', userRoutes);
 
+
+// Cron job'ları başlat (API rotaları tanımlandıktan sonra, hata işleyiciden önce)
+cronJobs.startCronJobs(); // <-- YENİ EKLEME: Cron job'ları başlat
 
 // Tanımlanmamış rotaları yakalamak için middleware
 app.all('*', (req, res, next) => {
