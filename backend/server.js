@@ -5,11 +5,15 @@ const dotenv = require('dotenv');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const cors = require('cors'); // CORS middleware'i
+const path = require('path'); // Node.js'in 'path' modülünü import edin (dosya yolları için)
+
 const db = require('./config/db'); // MySQL bağlantısı
 const authRoutes = require('./routes/authRoutes'); // Kimlik doğrulama rotaları
+const productRoutes = require('./routes/productRoutes'); // Ürün rotalarını import edin
+const orderRoutes = require('./routes/orderRoutes'); // Sipariş rotalarını import edin <-- Bu satırın olduğundan emin olun
+
 
 // AppError ve diğer özel hata sınıflarını buradan import edin
-// errors/AppError.js dosyanızda AppError dahil tüm hata sınıfları obje olarak export edildiği için bu şekilde import etmeliyiz.
 const { AppError, UnauthorizedError, ForbiddenError, NotFoundError, BadRequestError } = require('./errors/AppError');
 
 
@@ -34,6 +38,13 @@ app.use(cors({
 }));
 app.use(express.json()); // JSON body parser
 app.use(cookieParser()); // Cookie parser
+
+// Public klasörünü statik dosyalar için sun
+// 'backend' klasöründen direkt 'public' klasörüne gitmeliyiz.
+// __dirname: C:\Users\Samsung\Desktop\DesignToCode\PlantShopECommerce\backend
+// Hedef: C:\Users\Samsung\Desktop\DesignToCode\PlantShopECommerce\backend\public
+app.use(express.static(path.join(__dirname, 'public'))); // <-- Bu satırın tam olarak bu şekilde olduğundan emin olun
+
 if (process.env.NODE_ENV === 'development') {
     app.use(morgan('dev')); // Geliştirme modunda HTTP isteklerini logla
 }
@@ -42,31 +53,24 @@ if (process.env.NODE_ENV === 'development') {
 // Kimlik doğrulama rotalarını ekle
 app.use('/api/auth', authRoutes);
 
+// Ürün rotalarını ekle
+app.use('/api/products', productRoutes);
+
+// Sipariş rotalarını ekle
+app.use('/api/orders', orderRoutes); // <-- Bu satırın olduğundan emin olun
+
 // Diğer rotalarınız buraya eklenebilir
-// app.use('/api/products', productRoutes);
 // app.use('/api/users', userRoutes);
 
 
 // Tanımlanmamış rotaları yakalamak için middleware
 app.all('*', (req, res, next) => {
-    // Burada AppError'ı doğrudan kullanabilirsiniz çünkü yukarıda import ettik
     next(new AppError(`Bu sunucuda ${req.originalUrl} adresi bulunamadı!`, 404));
 });
 
 // Global hata işleyici middleware'i
-// Bu fonksiyonun ayrı bir dosyadan import edilmesi ve burada kullanılması en iyi uygulamadır.
-// Örneğin: const globalErrorHandler = require('./controllers/errorController');
-// app.use(globalErrorHandler);
-// Şu anki durumunuz için basit bir örnek olarak burada bırakıyorum, ancak
-// büyük projelerde hata işleyicinizi ayrı bir dosyaya taşımanız şiddetle önerilir.
 app.use((err, req, res, next) => {
-    // Eğer hata zaten bir AppError değilse, onu bir AppError objesine dönüştür.
-    // Bu, tanımsız veya operasyonel olmayan hataların da AppError formatında işlenmesini sağlar.
-    // Eğer hata AppError.js'teki sınıflardan biriyse (isOperational: true),
-    // doğrudan o hatayı kullan, aksi takdirde yeni bir AppError oluştur.
     if (!err.isOperational) {
-        // Bu bir programlama hatası (örneğin undefined bir şey okuma) veya bilinmeyen bir hata olabilir.
-        // Bu tür hataları loglayıp genel bir hata mesajı döndürürüz.
         console.error('ERROR 💥', err); // Hatanın tam yığın izini logla
         err.statusCode = 500;
         err.status = 'error';
@@ -93,9 +97,8 @@ const server = app.listen(PORT, () => {
 process.on('unhandledRejection', err => {
     console.log('UNHANDLED REJECTION! 💥 Uygulama kapatılıyor...');
     console.error(err.name, err.message);
-    // Sunucuyu graceful bir şekilde kapat (açık istekleri tamamlamasına izin ver)
     server.close(() => {
-        process.exit(1); // Uygulamayı kapat
+        process.exit(1);
     });
 });
 
@@ -103,5 +106,5 @@ process.on('unhandledRejection', err => {
 process.on('uncaughtException', err => {
     console.log('UNCAUGHT EXCEPTION! 💥 Uygulama kapatılıyor...');
     console.error(err.name, err.message);
-    process.exit(1); // Uygulamayı kapat
+    process.exit(1);
 });

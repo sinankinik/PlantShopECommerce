@@ -439,6 +439,17 @@ exports.orderUpdateValidation = [
     // Diğer alanlar da duruma göre eklenebilir
 ];
 
+// --- EKLENEN KISIM: SİPARİŞ DURUMU GÜNCELLEME VALIDASYONU ---
+exports.orderStatusUpdateValidation = [
+    body('status')
+        .notEmpty()
+        .withMessage('Sipariş durumu boş olamaz.')
+        .isIn(['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'])
+        .withMessage('Geçersiz sipariş durumu. Geçerli durumlar: pending, processing, shipped, delivered, cancelled, refunded.'),
+];
+// --- EKLENEN KISIM SONU ---
+
+
 // Sipariş ID'si parametre validasyonu (GET, DELETE gibi işlemler için)
 exports.orderIdParamValidation = [
     param('id')

@@ -4,28 +4,61 @@ const db = require('../config/db');
 const { AppError, NotFoundError, BadRequestError } = require('../errors/AppError');
 const APIFeatures = require('../utils/apiFeatures');
 // const fs = require('fs'); // Eğer hata durumunda yüklenen resimleri silmek isterseniz import edin
+const { uploadSingleProductImage } = require('../utils/uploadHandler');
+
+
 
 // Ürün oluşturma
+// Yeni ürün ekleme (resim yükleme ile)
 exports.createProduct = async (req, res, next) => {
-    const { name, description, price, stock_quantity, image_url, category_id } = req.body;
-
-    try {
-        const [result] = await db.query(
-            'INSERT INTO products (name, description, price, stock_quantity, image_url, category_id) VALUES (?, ?, ?, ?, ?, ?)',
-            [name, description, price, stock_quantity, image_url, category_id]
-        );
-
-        res.status(201).json({
-            message: 'Ürün başarıyla oluşturuldu.',
-            productId: result.insertId
-        });
-
-    } catch (err) {
-        if (err.code === 'ER_NO_REFERENCED_ROW_2' || err.code === 'ER_NO_REFERENCED_ROW') {
-            return next(new BadRequestError('Belirtilen kategori bulunamadı veya geçersiz.'));
+    // Önce Multer middleware'ini çalıştıracağız
+    // Multer, req.file objesini oluşturur
+    uploadSingleProductImage(req, res, async (err) => {
+        if (err) {
+            // Multer'dan gelen bir hata varsa (dosya boyutu, tipi vb.)
+            return next(err);
         }
-        next(new AppError('Ürün oluşturulurken bir hata oluştu.', 500));
-    }
+
+        try {
+            const { name, description, price, stock_quantity, category_id, has_variants } = req.body;
+            const imageUrl = req.file ? `/uploads/products/${req.file.filename}` : null; // Yüklenen dosyanın yolu
+
+            if (!name || !price || !stock_quantity) {
+                return next(new BadRequestError('Ürün adı, fiyatı ve stok miktarı zorunludur.'));
+            }
+
+            const [result] = await db.query(
+                'INSERT INTO products (name, description, price, stock_quantity, image_url, category_id, has_variants) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [name, description, price, stock_quantity, imageUrl, category_id || null, has_variants || 0]
+            );
+
+            const newProductId = result.insertId;
+
+            res.status(201).json({
+                status: 'success',
+                message: 'Ürün başarıyla oluşturuldu ve resim yüklendi.',
+                data: {
+                    product: {
+                        id: newProductId,
+                        name,
+                        description,
+                        price,
+                        stock_quantity,
+                        image_url: imageUrl,
+                        category_id,
+                        has_variants
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error('Ürün oluşturma hatası:', error);
+            if (error.code === 'ER_DUP_ENTRY') {
+                return next(new BadRequestError('Bu ürün adı zaten kullanılıyor olabilir.'));
+            }
+            next(new AppError('Ürün oluşturulurken bir hata oluştu.', 500));
+        }
+    });
 };
 
 // Tüm ürünleri getir (filtreleme, arama, sıralama, sayfalama ile)

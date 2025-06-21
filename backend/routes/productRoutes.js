@@ -16,14 +16,14 @@ router.get('/:id', productController.getProductById);
 // Ancak varyant rotaları için protect ve restrictTo ayrı ayrı belirtilmiştir.
 // Bu duruma göre ya genel .use(protect) kaldırılır, ya da varyant rotalarına protect eklenmez.
 // Mevcut yapıda her ikisini de kullanmak, güvenlik katmanını vurgular.
-router.use(protect);
+router.use(protect); // protect middleware'i tüm admin rotaları için genel olarak uygulanır
 
 router.post(
     '/',
     restrictTo('admin'),
     validationMiddleware.productCreateValidation,
     validationMiddleware.validate,
-    productController.createProduct
+    productController.createProduct // createProduct içinde artık multer çağrısı yok
 );
 
 router.patch(
@@ -37,11 +37,11 @@ router.patch(
 router.delete('/:id', restrictTo('admin'), productController.deleteProduct);
 
 // Resim yükleme rotası (Admin yetkisi gerektirir)
-router.post(
-    '/:id/upload-image', // Ürüne özel tekil resim yükleme
-    restrictTo('admin'), // Zaten router.use(protect) olduğu için protect eklemeye gerek yok
-    uploadMiddleware.uploadProductImage, // Multer middleware'i
-    productController.uploadProductImage // Resmi veritabanına kaydetme (image_url güncelleme)
+router.patch( // Genellikle bir kaynağı güncellemek için PATCH kullanılır.
+    '/:id/upload-image', // Ürüne özel tekil resim yükleme rotası (productId burada id olarak alınır)
+    restrictTo('admin'), // Sadece adminlerin ürün resmi yükleyebilmesi için
+    uploadMiddleware.uploadProductImage, // Multer middleware'i (req.file objesini oluşturur)
+    productController.uploadProductImage // Yüklenen resmi veritabanına kaydetme (image_url güncelleme)
 );
 
 /*
