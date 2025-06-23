@@ -16,6 +16,8 @@ const orderRoutes = require('./routes/orderRoutes'); // Sipariş rotalarını im
 // AppError ve diğer özel hata sınıflarını buradan import edin
 const { AppError, UnauthorizedError, ForbiddenError, NotFoundError, BadRequestError } = require('./errors/AppError');
 const cronJobs = require('./utils/cronJobs'); // <-- YENİ EKLEME: Cron job'ları import et
+// Ödeme rotalarını da import etmeniz gerekecek, eğer daha önce eklemediyseniz:
+const paymentRoutes = require('./routes/paymentRoutes'); // <-- YENİ EKLEME (Ödeme entegrasyonu için)
 
 
 // Ortam değişkenlerini yükle (process.env erişimi için)
@@ -59,6 +61,10 @@ app.use('/api/products', productRoutes);
 
 // Sipariş rotalarını ekle
 app.use('/api/orders', orderRoutes);
+
+// Ödeme rotalarını ekle (eğer daha önce eklemediyseniz, şimdi ekleyin)
+app.use('/api/payments', paymentRoutes); // <-- YENİ EKLEME (Ödeme entegrasyonu için)
+
 
 // Diğer rotalarınız buraya eklenebilir
 // app.use('/api/users', userRoutes);
