@@ -3,6 +3,7 @@
 const db = require('../config/db');
 const { AppError, NotFoundError, BadRequestError, ForbiddenError } = require('../errors/AppError');
 const { decreaseStock, increaseStock } = require('../utils/stockHelper'); // Stok yardımcılarını import et
+const APIFeatures = require('../utils/apiFeatures'); // APIFeatures sınıfını import et
 
 // Sipariş oluşturma
 exports.createOrder = async (req, res, next) => {
@@ -110,21 +111,49 @@ exports.createOrder = async (req, res, next) => {
 // Tüm siparişleri getir (Adminler tüm siparişleri, kullanıcılar kendi siparişlerini)
 exports.getAllOrders = async (req, res, next) => {
     try {
-        let query = 'SELECT o.id, o.user_id, o.total_amount, o.status, o.shipping_address, o.created_at, o.updated_at, u.username as user_username, u.email as user_email FROM orders o JOIN users u ON o.user_id = u.id';
-        let params = [];
+        // APIFeatures için temel sorgu. JOIN ile kullanıcı bilgilerini de alıyoruz.
+        // Bu sorgu, APIFeatures tarafından filtrelenecek, sıralanacak ve sayfalanacak.
+        const baseQuery = `
+            SELECT 
+                o.id, 
+                o.user_id, 
+                o.total_amount, 
+                o.status, 
+                o.shipping_address, 
+                o.order_date,  -- created_at yerine order_date kullanıldı
+                o.updated_at, 
+                u.username as user_username, 
+                u.email as user_email 
+            FROM orders o 
+            JOIN users u ON o.user_id = u.id
+        `;
 
-        if (req.user.role !== 'admin') {
-            query += ' WHERE o.user_id = ?';
-            params.push(req.user.id);
-        }
+        // APIFeatures'ı başlat
+        const features = new APIFeatures(baseQuery, req.query)
+            .filter() // Filtreleme (status, total_amount[gte/lte] vb.)
+            .search(['u.username', 'u.email', 'o.shipping_address']) // Kullanıcı adı, e-posta veya gönderim adresine göre arama
+            .sort('o.order_date') // Varsayılan sıralama alanı olarak 'o.order_date' kullanıldı
+            .paginate(); // Sayfalama (page, limit)
 
-        query += ' ORDER BY o.created_at DESC';
+        const [orders] = await db.query(features.query, features.params);
 
-        const [orders] = await db.query(query, params);
+        // Toplam kayıt sayısı için ayrı bir sorgu (filtreleme ve arama uygulanmış hali)
+        const countBaseQuery = `
+            SELECT COUNT(o.id) as total 
+            FROM orders o 
+            JOIN users u ON o.user_id = u.id
+        `;
+        const countFeatures = new APIFeatures(countBaseQuery, req.query)
+            .filter()
+            .search(['u.username', 'u.email', 'o.shipping_address']);
+
+        const [totalCountResult] = await db.query(countFeatures.query, countFeatures.params);
+        const totalOrders = totalCountResult[0].total;
 
         res.status(200).json({
             status: 'success',
             results: orders.length,
+            total: totalOrders,
             data: { orders }
         });
     } catch (err) {
@@ -138,7 +167,7 @@ exports.getOrderById = async (req, res, next) => {
     try {
         const orderId = req.params.id;
         const [rows] = await db.query(
-            'SELECT o.id, o.user_id, o.total_amount, o.status, o.shipping_address, o.created_at, o.updated_at, u.username as user_username, u.email as user_email FROM orders o JOIN users u ON o.user_id = u.id WHERE o.id = ?',
+            'SELECT o.id, o.user_id, o.total_amount, o.status, o.shipping_address, o.order_date, o.updated_at, u.username as user_username, u.email as user_email FROM orders o JOIN users u ON o.user_id = u.id WHERE o.id = ?', // created_at yerine order_date
             [orderId]
         );
         const order = rows[0];
@@ -177,14 +206,51 @@ exports.getOrderById = async (req, res, next) => {
 exports.getUserOrders = async (req, res, next) => {
     try {
         const userId = req.user.id;
-        const [orders] = await db.query(
-            'SELECT o.id, o.total_amount, o.status, o.shipping_address, o.created_at FROM orders o WHERE o.user_id = ? ORDER BY o.created_at DESC',
-            [userId]
-        );
+        // Kullanıcının kendi siparişleri için de APIFeatures kullanabiliriz
+        const baseQuery = `
+            SELECT 
+                o.id, 
+                o.total_amount, 
+                o.status, 
+                o.shipping_address, 
+                o.order_date  -- created_at yerine order_date kullanıldı
+            FROM orders o 
+            WHERE o.user_id = ?
+        `;
+        
+        // APIFeatures'ı başlat
+        // Kullanıcının kendi siparişlerinde arama/filtreleme/sıralama/sayfalama
+        const features = new APIFeatures(baseQuery, req.query)
+            .filter()
+            .search(['o.shipping_address', 'o.status']) // Kullanıcılar kendi siparişlerinde adres veya duruma göre arama yapabilir
+            .sort('o.order_date') // Varsayılan sıralama alanı olarak 'o.order_date' kullanıldı
+            .paginate();
+        
+        // params dizisine user_id'yi ekle
+        features.params.unshift(userId); // WHERE o.user_id = ? için ilk parametre
+
+        const [orders] = await db.query(features.query, features.params);
+
+        // Toplam kayıt sayısı için ayrı bir sorgu (filtreleme ve arama uygulanmış hali)
+        const countBaseQuery = `
+            SELECT COUNT(o.id) as total 
+            FROM orders o 
+            WHERE o.user_id = ?
+        `;
+        const countFeatures = new APIFeatures(countBaseQuery, req.query)
+            .filter()
+            .search(['o.shipping_address', 'o.status']);
+        
+        countFeatures.params.unshift(userId); // WHERE o.user_id = ? için ilk parametre
+
+        const [totalCountResult] = await db.query(countFeatures.query, countFeatures.params);
+        const totalOrders = totalCountResult[0].total;
+
 
         res.status(200).json({
             status: 'success',
             results: orders.length,
+            total: totalOrders,
             data: { orders }
         });
     } catch (err) {
@@ -192,6 +258,7 @@ exports.getUserOrders = async (req, res, next) => {
         next(new AppError('Kullanıcının siparişleri getirilirken bir hata oluştu.', 500));
     }
 };
+
 
 // Sipariş durumu güncelleme (Admin yetkisi gerektirir)
 exports.updateOrderStatus = async (req, res, next) => {
@@ -396,6 +463,7 @@ exports.deleteOrder = async (req, res, next) => {
             data: null,
             message: 'Sipariş başarıyla silindi.'
         });
+
     } catch (err) {
         if (connection) {
             await connection.rollback();

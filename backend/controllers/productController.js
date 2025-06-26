@@ -3,70 +3,87 @@
 const db = require('../config/db');
 const { AppError, NotFoundError, BadRequestError } = require('../errors/AppError');
 const APIFeatures = require('../utils/apiFeatures');
+const redisClient = require('../config/redis'); // Redis istemcisini import et
 // const fs = require('fs'); // Eğer hata durumunda yüklenen resimleri silmek isterseniz import edin
 
-// make sure this import is correct based on your upload handler file
-// For example, if you have it directly in productController, you might not need this.
-// But if you moved Multer config to uploadHandler, keep it.
-const { uploadSingleProductImage } = require('../utils/uploadHandler');
+// Artık Multer çağrısı controller içinde değil, route'da middleware olarak yapılıyor.
+// Bu import'a artık doğrudan gerek yok, çünkü uploadHandler'dan gelen middleware'lar route'da çağrılıyor.
+// const { uploadSingleProductImage } = require('../utils/uploadHandler'); 
 
 
 // Ürün oluşturma
 // Yeni ürün ekleme (resim yükleme ile)
 exports.createProduct = async (req, res, next) => {
-    // Önce Multer middleware'ini çalıştıracağız
-    // Multer, req.file objesini oluşturur
-    uploadSingleProductImage(req, res, async (err) => {
-        if (err) {
-            // Multer'dan gelen bir hata varsa (dosya boyutu, tipi vb.)
-            return next(err);
+    // Multer ve Sharp middleware'ları zaten çalıştı.
+    // req.file objesi artık işlenmiş dosya bilgilerini ve kaydedilen yolu içeriyor.
+    try {
+        const { name, description, price, stock_quantity, category_id, has_variants } = req.body;
+        // imageUrl artık req.file.path'ten alınıyor.
+        const imageUrl = req.file ? req.file.path : null; 
+
+        if (!name || !price || !stock_quantity) {
+            // Eğer resim yüklenmesi zorunluysa, buraya req.file kontrolü de eklenebilir.
+            return next(new BadRequestError('Ürün adı, fiyatı ve stok miktarı zorunludur.'));
         }
 
-        try {
-            const { name, description, price, stock_quantity, category_id, has_variants } = req.body;
-            const imageUrl = req.file ? `/uploads/products/${req.file.filename}` : null; // Yüklenen dosyanın yolu
+        // has_variants değerini boolean'a ve sonra 0 veya 1'e dönüştür
+        const hasVariantsBoolean = (has_variants === 'true' || has_variants === true || has_variants === 1);
+        const hasVariantsForDb = hasVariantsBoolean ? 1 : 0; // MySQL TINYINT(1) için 1 veya 0
 
-            if (!name || !price || !stock_quantity) {
-                return next(new BadRequestError('Ürün adı, fiyatı ve stok miktarı zorunludur.'));
-            }
+        const [result] = await db.query(
+            'INSERT INTO products (name, description, price, stock_quantity, image_url, category_id, has_variants) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [name, description, price, stock_quantity, imageUrl, category_id || null, hasVariantsForDb] // Burayı güncelledik
+        );
 
-            const [result] = await db.query(
-                'INSERT INTO products (name, description, price, stock_quantity, image_url, category_id, has_variants) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                [name, description, price, stock_quantity, imageUrl, category_id || null, has_variants || 0]
-            );
+        const newProductId = result.insertId;
 
-            const newProductId = result.insertId;
-
-            res.status(201).json({
-                status: 'success',
-                message: 'Ürün başarıyla oluşturuldu ve resim yüklendi.',
-                data: {
-                    product: {
-                        id: newProductId,
-                        name,
-                        description,
-                        price,
-                        stock_quantity,
-                        image_url: imageUrl,
-                        category_id,
-                        has_variants
-                    }
+        res.status(201).json({
+            status: 'success',
+            message: 'Ürün başarıyla oluşturuldu ve resim yüklendi.',
+            data: {
+                product: {
+                    id: newProductId,
+                    name,
+                    description,
+                    price,
+                    stock_quantity,
+                    image_url: imageUrl,
+                    category_id,
+                    has_variants: hasVariantsBoolean // Yanıtta boolean olarak döndürebiliriz
                 }
-            });
-
-        } catch (error) {
-            console.error('Ürün oluşturma hatası:', error);
-            if (error.code === 'ER_DUP_ENTRY') {
-                return next(new BadRequestError('Bu ürün adı zaten kullanılıyor olabilir.'));
             }
-            next(new AppError('Ürün oluşturulurken bir hata oluştu.', 500));
+        });
+
+    } catch (error) {
+        console.error('Ürün oluşturma hatası:', error);
+        if (error.code === 'ER_DUP_ENTRY') {
+            return next(new BadRequestError('Bu ürün adı zaten kullanılıyor olabilir.'));
         }
-    });
+        next(error instanceof AppError ? error : new AppError('Ürün oluşturulurken bir hata oluştu.', 500));
+    }
 };
 
 // Tüm ürünleri getir (filtreleme, arama, sıralama, sayfalama ile)
 exports.getAllProducts = async (req, res, next) => {
     try {
+        // Önbellek anahtarını oluştur
+        // Sorgu parametreleri değiştiğinde farklı bir önbellek anahtarı olmalı
+        const cacheKey = `products:${JSON.stringify(req.query)}`;
+
+        // 1. Önbellekte var mı kontrol et
+        const cachedProducts = await redisClient.get(cacheKey);
+
+        if (cachedProducts) {
+            console.log('Ürünler önbellekten getirildi.');
+            return res.status(200).json({
+                status: 'success',
+                // JSON.parse ile string'i tekrar objeye dönüştür
+                ...JSON.parse(cachedProducts), 
+                fromCache: true // Yanıta önbellekten geldiğini belirt
+            });
+        }
+
+        // 2. Önbellekte yoksa veritabanından çek
         const baseQuery = "SELECT p.*, c.name as categoryName FROM products p JOIN categories c ON p.category_id = c.id";
 
         const features = new APIFeatures(baseQuery, req.query)
@@ -88,13 +105,20 @@ exports.getAllProducts = async (req, res, next) => {
         const [totalCountResult] = await db.query(countFeatures.query, countFeatures.params);
         const totalProducts = totalCountResult[0].total;
 
-        res.status(200).json({
-            status: 'success',
+        const responseData = {
             results: products.length,
             total: totalProducts,
-            data: {
-                products
-            }
+            data: { products }
+        };
+
+        // 3. Veritabanından çekilen veriyi önbelleğe kaydet (örn: 1 saat = 3600 saniye)
+        await redisClient.setex(cacheKey, 3600, JSON.stringify(responseData)); // setex: expire süresiyle kaydet
+
+        console.log('Ürünler veritabanından getirildi ve önbelleğe alındı.');
+        res.status(200).json({
+            status: 'success',
+            ...responseData,
+            fromCache: false // Yanıta önbellekten gelmediğini belirt
         });
     } catch (err) {
         console.error('Ürünleri getirirken hata oluştu:', err);
@@ -127,7 +151,7 @@ exports.getProductById = async (req, res, next) => {
 // Ürünü güncelle
 exports.updateProduct = async (req, res, next) => {
     const productId = req.params.id;
-    const { name, description, price, stock_quantity, image_url, category_id } = req.body;
+    const { name, description, price, stock_quantity, image_url, category_id, has_variants } = req.body; // has_variants'ı buraya da ekle
 
     try {
         const [existingProduct] = await db.query('SELECT id FROM products WHERE id = ?', [productId]);
@@ -135,9 +159,22 @@ exports.updateProduct = async (req, res, next) => {
             return next(new NotFoundError('Güncellenecek ürün bulunamadı.'));
         }
 
-        const updateFields = { name, description, price, stock_quantity, image_url, category_id };
-        const setClauses = Object.keys(updateFields).filter(key => updateFields[key] !== undefined).map(key => `${key} = ?`);
-        const values = Object.keys(updateFields).filter(key => updateFields[key] !== undefined).map(key => updateFields[key]);
+        const updateFields = {};
+        if (name !== undefined) updateFields.name = name;
+        if (description !== undefined) updateFields.description = description;
+        if (price !== undefined) updateFields.price = price;
+        if (stock_quantity !== undefined) updateFields.stock_quantity = stock_quantity;
+        if (image_url !== undefined) updateFields.image_url = image_url;
+        if (category_id !== undefined) updateFields.category_id = category_id;
+        
+        // has_variants için dönüşüm
+        if (has_variants !== undefined) {
+            const hasVariantsBoolean = (has_variants === 'true' || has_variants === true || has_variants === 1);
+            updateFields.has_variants = hasVariantsBoolean ? 1 : 0;
+        }
+
+        const setClauses = Object.keys(updateFields).map(key => `${key} = ?`);
+        const values = Object.values(updateFields);
 
         if (setClauses.length === 0) {
             return next(new BadRequestError('Güncellenecek herhangi bir bilgi sağlamadınız.'));
@@ -151,6 +188,7 @@ exports.updateProduct = async (req, res, next) => {
         if (err.code === 'ER_NO_REFERENCED_ROW_2' || err.code === 'ER_NO_REFERENCED_ROW') {
             return next(new BadRequestError('Belirtilen kategori bulunamadı veya geçersiz.'));
         }
+        console.error('Ürün güncellenirken hata (DETAYLI):', err); // Hata detayını logla
         next(new AppError('Ürün güncellenirken bir hata oluştu.', 500));
     }
 };
@@ -177,17 +215,19 @@ exports.deleteProduct = async (req, res, next) => {
 exports.uploadProductImage = async (req, res, next) => {
     const productId = req.params.id;
 
-    if (!req.file) {
+    // req.file, Multer ve Sharp middleware'ları tarafından zaten işlenmiş olmalı.
+    // req.file.path, kaydedilen resmin yolunu içerir.
+    if (!req.file || !req.file.path) { // req.file.path'i de kontrol ediyoruz
         return next(new BadRequestError('Lütfen yüklenecek bir resim dosyası seçin.'));
     }
 
-    // Dosya yolu: /uploads/dosya_adı.jpg
-    const imageUrl = `/uploads/${req.file.filename}`;
+    const imageUrl = req.file.path; // Sharp tarafından işlenmiş ve kaydedilmiş yol
 
     try {
         const [product] = await db.query('SELECT id FROM products WHERE id = ?', [productId]);
         if (product.length === 0) {
-            // fs.unlink(req.file.path, (err) => { if (err) console.error("Resim silinirken hata:", err); }); // Hata durumunda resmi sil
+            // Hata durumunda yüklenen resmi silmek isterseniz fs.unlink kullanabilirsiniz
+            // fs.unlink(path.join(__dirname, '..', '..', 'public', imageUrl), (err) => { if (err) console.error("Resim silinirken hata:", err); });
             return next(new NotFoundError('Resim yüklenecek ürün bulunamadı.'));
         }
 
@@ -201,7 +241,8 @@ exports.uploadProductImage = async (req, res, next) => {
 
     } catch (err) {
         console.error('Ürün resmi yüklenirken/güncellenirken hata:', err);
-        // fs.unlink(req.file.path, (err) => { if (err) console.error("Resim silinirken hata:", err); }); // Hata durumunda resmi sil
+        // Hata durumunda yüklenen resmi silmek isterseniz fs.unlink kullanabilirsiniz
+        // fs.unlink(path.join(__dirname, '..', '..', 'public', imageUrl), (err) => { if (err) console.error("Resim silinirken hata:", err); });
         return next(new AppError('Ürün resmi yüklenirken/güncellenirken bir hata oluştu.', 500));
     }
 };
@@ -211,16 +252,18 @@ exports.uploadProductImage = async (req, res, next) => {
 // Eğer birden fazla resim yükleyecekseniz (galeri için)
 exports.uploadProductImages = async (req, res, next) => {
     const productId = req.params.id;
-    if (!req.files || req.files.length === 0) {
+    // req.body.images, Sharp middleware'ı tarafından işlenmiş ve kaydedilmiş yolları içerir.
+    if (!req.body.images || req.body.images.length === 0) {
         return next(new BadRequestError('Lütfen yüklenecek resim dosyaları seçin.'));
     }
 
-    const imageUrls = req.files.map(file => `/uploads/${file.filename}`);
+    const imageUrls = req.body.images; // Sharp tarafından işlenmiş ve kaydedilmiş yollar
 
     try {
         const [product] = await db.query('SELECT id FROM products WHERE id = ?', [productId]);
         if (product.length === 0) {
-            req.files.forEach(file => fs.unlink(file.path, (err) => { if (err) console.error("Resim silinirken hata:", err); }));
+            // Hata durumunda yüklenen resimleri silmek isterseniz
+            // imageUrls.forEach(url => fs.unlink(path.join(__dirname, '..', '..', 'public', url), (err) => { if (err) console.error("Resim silinirken hata:", err); }));
             return next(new NotFoundError('Resim yüklenecek ürün bulunamadı.'));
         }
 
@@ -238,7 +281,8 @@ exports.uploadProductImages = async (req, res, next) => {
 
     } catch (err) {
         console.error('Ürün resimleri yüklenirken hata:', err);
-        req.files.forEach(file => fs.unlink(file.path, (err) => { if (err) console.error("Resim silinirken hata:", err); }));
+        // Hata durumunda yüklenen resimleri silmek isterseniz
+        // imageUrls.forEach(url => fs.unlink(path.join(__dirname, '..', '..', 'public', url), (err) => { if (err) console.error("Resim silinirken hata:", err); }));
         return next(new AppError('Ürün resimleri yüklenirken bir hata oluştu.', 500));
     }
 };
