@@ -7,8 +7,11 @@ import Button from '../common/Button';
 
 const Header = () => {
   const { isAuthenticated, user } = useSelector((state) => state.auth);
+  const { totalQuantity } = useSelector((state) => state.cart); // <-- Sepet toplam miktarını al
   const dispatch = useDispatch();
   const navigate = useNavigate();
+
+  const isAdmin = user && (user.is_admin === 1 || user.role === 'admin');
 
   const handleLogout = () => {
     dispatch(logoutUser());
@@ -25,8 +28,13 @@ const Header = () => {
           <Link to="/products" className="hover:text-green-200">
             Ürünler
           </Link>
-          <Link to="/cart" className="hover:text-green-200">
+          <Link to="/cart" className="hover:text-green-200 relative"> {/* <-- Sepet linki */}
             Sepet
+            {totalQuantity > 0 && ( // totalQuantity 0'dan büyükse göster
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                {totalQuantity}
+              </span>
+            )}
           </Link>
           {isAuthenticated ? (
             <>
@@ -34,9 +42,19 @@ const Header = () => {
               <Link to="/profile" className="hover:text-green-200">
                 Profil
               </Link>
-              <Link to="/orders" className="hover:text-green-200">
+              <Link to="/my-orders" className="hover:text-green-200">
                 Siparişlerim
               </Link>
+              {isAdmin && ( // Sadece admin ise bu linkleri göster
+                <>
+                  <Link to="/admin/products" className="hover:text-green-200">
+                    Ürün Yönetimi
+                  </Link>
+                  <Link to="/admin/categories" className="hover:text-green-200">
+                    Kategori Yönetimi
+                  </Link>
+                </>
+              )}
               <Button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 px-3 py-1 text-sm">
                 Çıkış Yap
               </Button>
@@ -51,7 +69,6 @@ const Header = () => {
               </Link>
             </>
           )}
-          {/* Admin menüsü burada user.role kontrolü ile eklenebilir */}
         </nav>
       </div>
     </header>

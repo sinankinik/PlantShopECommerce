@@ -2,17 +2,11 @@
 
 const db = require('../config/db');
 const { AppError, NotFoundError, BadRequestError } = require('../errors/AppError');
-const APIFeatures = require('../utils/apiFeatures');
+const APIFeatures = require('../utils/apiFeatures'); // APIFeatures sınıfını import et
 const redisClient = require('../config/redis'); // Redis istemcisini import et
 // const fs = require('fs'); // Eğer hata durumunda yüklenen resimleri silmek isterseniz import edin
 
-// Artık Multer çağrısı controller içinde değil, route'da middleware olarak yapılıyor.
-// Bu import'a artık doğrudan gerek yok, çünkü uploadHandler'dan gelen middleware'lar route'da çağrılıyor.
-// const { uploadSingleProductImage } = require('../utils/uploadHandler'); 
-
-
-// Ürün oluşturma
-// Yeni ürün ekleme (resim yükleme ile)
+// Ürün oluşturma (resim yükleme ile)
 exports.createProduct = async (req, res, next) => {
     // Multer ve Sharp middleware'ları zaten çalıştı.
     // req.file objesi artık işlenmiş dosya bilgilerini ve kaydedilen yolu içeriyor.
@@ -32,7 +26,7 @@ exports.createProduct = async (req, res, next) => {
 
         const [result] = await db.query(
             'INSERT INTO products (name, description, price, stock_quantity, image_url, category_id, has_variants) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [name, description, price, stock_quantity, imageUrl, category_id || null, hasVariantsForDb] // Burayı güncelledik
+            [name, description, price, stock_quantity, imageUrl, category_id || null, hasVariantsForDb]
         );
 
         const newProductId = result.insertId;
@@ -67,7 +61,6 @@ exports.createProduct = async (req, res, next) => {
 exports.getAllProducts = async (req, res, next) => {
     try {
         // Önbellek anahtarını oluştur
-        // Sorgu parametreleri değiştiğinde farklı bir önbellek anahtarı olmalı
         const cacheKey = `products:${JSON.stringify(req.query)}`;
 
         // 1. Önbellekte var mı kontrol et
@@ -84,35 +77,70 @@ exports.getAllProducts = async (req, res, next) => {
         }
 
         // 2. Önbellekte yoksa veritabanından çek
-        const baseQuery = "SELECT p.*, c.name as categoryName FROM products p JOIN categories c ON p.category_id = c.id";
+        const { page = 1, limit = 10, category: categoryId, search, sort } = req.query;
 
-        const features = new APIFeatures(baseQuery, req.query)
-            .filter()
-            .search(['p.name', 'p.description']) // Ürün adı ve açıklamasına göre arama yap
-            .sort()
-            .paginate();
+        let baseQuery = "SELECT p.*, c.name as categoryName FROM products p LEFT JOIN categories c ON p.category_id = c.id";
+        let countBaseQuery = "SELECT COUNT(*) as total FROM products p LEFT JOIN categories c ON p.category_id = c.id";
+        
+        const queryParams = [];
+        const countParams = [];
+        const whereClauses = [];
 
-        // Ürünleri ve toplam sayıyı almak için iki ayrı sorgu çalıştırılır
-        // Ana sorgu: filtrelenmiş, sıralanmış ve sayfalanmış ürünler
-        const [products] = await db.query(features.query, features.params);
+        // Kategoriye göre filtreleme
+        if (categoryId && categoryId !== '') {
+            whereClauses.push('p.category_id = ?');
+            queryParams.push(categoryId);
+            countParams.push(categoryId);
+        }
 
-        // Toplam ürün sayısını almak için ayrı bir sorgu (pagination için gerekli)
-        const countBaseQuery = "SELECT COUNT(*) as total FROM products p JOIN categories c ON p.category_id = c.id";
-        const countFeatures = new APIFeatures(countBaseQuery, req.query)
-            .filter()
-            .search(['p.name', 'p.description']); // COUNT sorgusuna da aynı arama ve filtreleri uygula
+        // Arama terimine göre filtreleme
+        if (search) {
+            whereClauses.push('(p.name LIKE ? OR p.description LIKE ?)');
+            queryParams.push(`%${search}%`, `%${search}%`);
+            countParams.push(`%${search}%`, `%${search}%`);
+        }
 
-        const [totalCountResult] = await db.query(countFeatures.query, countFeatures.params);
-        const totalProducts = totalCountResult[0].total;
+        if (whereClauses.length > 0) {
+            baseQuery += ' WHERE ' + whereClauses.join(' AND ');
+            countBaseQuery += ' WHERE ' + whereClauses.join(' AND ');
+        }
+
+        // APIFeatures'ı sadece sıralama ve sayfalama için kullanmak üzere geçici bir query objesi oluştur
+        // req.query'den sadece 'sort', 'page', 'limit' gibi parametreleri içeren bir obje oluşturuyoruz.
+        const featuresQuery = {
+            sort: req.query.sort,
+            page: req.query.page,
+            limit: req.query.limit
+        };
+
+        const features = new APIFeatures(baseQuery, featuresQuery)
+            .sort() // Sıralama uygula
+            .paginate(); // Sayfalama uygula
+
+        // APIFeatures'tan gelen son sorguyu ve parametreleri al
+        const finalQuery = features.query;
+        const finalQueryParams = [...queryParams, ...features.params]; // Kendi filtre parametrelerimizle birleştir
+
+        // Toplam ürün sayısını al
+        const [totalRows] = await db.query(countBaseQuery, countParams);
+        const totalItems = totalRows[0].total;
+        const totalPages = Math.ceil(totalItems / parseInt(limit));
+
+        // Ürünleri al
+        const [products] = await db.query(finalQuery, finalQueryParams);
 
         const responseData = {
-            results: products.length,
-            total: totalProducts,
-            data: { products }
+            products: products, // Frontend'in beklediği 'products' anahtarı altında
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalItems: totalItems,
+                totalPages: totalPages,
+            }
         };
 
         // 3. Veritabanından çekilen veriyi önbelleğe kaydet (örn: 1 saat = 3600 saniye)
-        await redisClient.setex(cacheKey, 3600, JSON.stringify(responseData)); // setex: expire süresiyle kaydet
+        await redisClient.setex(cacheKey, 3600, JSON.stringify(responseData));
 
         console.log('Ürünler veritabanından getirildi ve önbelleğe alındı.');
         res.status(200).json({
@@ -122,7 +150,7 @@ exports.getAllProducts = async (req, res, next) => {
         });
     } catch (err) {
         console.error('Ürünleri getirirken hata oluştu:', err);
-        next(new AppError('Ürünler getirilirken bir hata oluştu.', 500));
+        next(new AppError('Ürünleri getirirken bir hata oluştu.', 500));
     }
 };
 
@@ -131,7 +159,7 @@ exports.getProductById = async (req, res, next) => {
     const productId = req.params.id;
 
     try {
-        const [rows] = await db.query('SELECT * FROM products WHERE id = ?', [productId]);
+        const [rows] = await db.query('SELECT p.*, c.name as categoryName FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?', [productId]);
         const product = rows[0];
 
         if (!product) {
@@ -316,10 +344,10 @@ exports.getLowStockProducts = async (req, res, next) => {
                 pv.material,
                 pv.stock_quantity AS variant_stock_quantity,
                 p.name AS product_name
-             FROM product_variants pv
-             JOIN products p ON pv.product_id = p.id
-             WHERE pv.stock_quantity <= ?
-             ORDER BY pv.stock_quantity ASC`,
+               FROM product_variants pv
+               JOIN products p ON pv.product_id = p.id
+               WHERE pv.stock_quantity <= ?
+               ORDER BY pv.stock_quantity ASC`,
             [LOW_STOCK_THRESHOLD]
         );
 

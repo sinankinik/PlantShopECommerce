@@ -1,32 +1,52 @@
-// backend/routes/authRoutes.js (Güncellenmiş Kısım)
+// backend/routes/authRoutes.js
 
 const express = require('express');
 const authController = require('../controllers/authController');
-const authMiddleware = require('../middleware/authMiddleware');
+const validationMiddleware = require('../middleware/validationMiddleware'); // Validasyon middleware'ini import edin
 
 const router = express.Router();
 
-// Public rotalar (oturum açmayı gerektirmez)
-router.post('/register', authController.register);
-router.post('/login', authController.login);
-router.post('/forgotPassword', authController.forgotPassword);
+// Kullanıcı kayıt rotası
+router.post(
+    '/register',
+    validationMiddleware.userRegisterValidation, // Kayıt validasyonu
+    validationMiddleware.validate,
+    authController.register
+);
 
-// Şifre sıfırlama için hem GET (tarayıcıdan erişim) hem de PATCH (yeni şifreyi gönderme)
-// Her iki rota da authMiddleware.protect'in dışında olmalı!
-router.get('/resetPassword/:token', authController.resetPasswordTokenCheck); // <-- Yeni GET rotası (Opsiyonel, sadece token kontrolü için)
-router.patch('/resetPassword/:token', authController.resetPassword); // Mevcut PATCH rotası
+// Kullanıcı giriş rotası
+router.post(
+    '/login',
+    validationMiddleware.userLoginValidation, // Giriş validasyonu
+    validationMiddleware.validate,
+    authController.login
+);
 
-router.get('/verifyEmail/:token', authController.verifyEmail);
+// Kullanıcı çıkış rotası
+router.post('/logout', authController.logout); // <-- Bu rota, 404 hatasını çözmek için kritik
 
+// Şifremi unuttum rotası
+router.post(
+    '/forgot-password',
+    validationMiddleware.forgotPasswordValidation, // Şifremi unuttum validasyonu
+    validationMiddleware.validate,
+    authController.forgotPassword
+);
 
-// Oturum açmayı gerektiren rotalar
-// Buradan itibaren tüm rotalar authMiddleware.protect tarafından korunur
-router.use(authMiddleware.protect);
+// Şifre sıfırlama rotası (token ile)
+router.patch(
+    '/reset-password/:token',
+    validationMiddleware.resetPasswordValidation, // Şifre sıfırlama validasyonu
+    validationMiddleware.validate,
+    authController.resetPassword
+);
 
-router.get('/me', authController.getMe);
-router.patch('/updateMyProfile', authController.updateMyProfile);
-router.patch('/updateMyPassword', authController.updateMyPassword);
-router.delete('/deleteMyAccount', authController.deleteMyAccount);
-
+// E-posta doğrulama rotası (token ile)
+router.get(
+    '/verify-email/:token',
+    validationMiddleware.verifyEmailValidation, // E-posta doğrulama validasyonu
+    validationMiddleware.validate,
+    authController.verifyEmail
+);
 
 module.exports = router;

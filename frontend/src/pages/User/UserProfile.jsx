@@ -1,9 +1,11 @@
 // src/pages/User/UserProfile.jsx
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+// Düzeltme: getUserProfile ve updateUserProfile artık authSlice'dan export ediliyor
 import { getUserProfile, updateUserProfile, clearAuthError, clearAuthMessage } from '../../features/auth/authSlice';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
+import LoadingSpinner from '../../components/common/LoadingSpinner'; // LoadingSpinner'ı import et
 import { useNavigate } from 'react-router-dom';
 
 const UserProfile = () => {
@@ -11,7 +13,6 @@ const UserProfile = () => {
   const navigate = useNavigate();
   const { user, loading, error, message } = useSelector((state) => state.auth);
 
-  // Kullanıcının mevcut bilgilerini başlangıç state'i olarak ayarla
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -19,30 +20,30 @@ const UserProfile = () => {
     lastName: '',
     address: '',
     phoneNumber: '',
-    // Şifre güncelleme için ayrı alanlar eklenebilir
   });
 
   useEffect(() => {
-    // Eğer kullanıcı bilgisi Redux state'inde yoksa veya güncel değilse çek
-    if (!user) {
+    // Kullanıcı bilgisi Redux state'inde yoksa veya `loading` false ise (yükleme bittiyse)
+    // ve user hala null ise, profil bilgilerini çek.
+    // Bu, hem ilk yüklemede hem de login sonrası user objesi henüz ayarlanmamışsa tetiklenir.
+    if (!user && !loading) {
       dispatch(getUserProfile());
-    } else {
+    } else if (user) {
       // Kullanıcı bilgisi varsa formu doldur
       setFormData({
         username: user.username || '',
         email: user.email || '',
-        firstName: user.first_name || '',
-        lastName: user.last_name || '',
+        firstName: user.first_name || '', // Backend'den gelen alan adlarına dikkat
+        lastName: user.last_name || '',   // Backend'den gelen alan adlarına dikkat
         address: user.address || '',
-        phoneNumber: user.phone_number || '',
+        phoneNumber: user.phone_number || '', // Backend'den gelen alan adlarına dikkat
       });
     }
-    // Component unmount edildiğinde veya yeni bir profil çekme isteği gönderilmeden önce hataları temizle
     return () => {
       dispatch(clearAuthError());
       dispatch(clearAuthMessage());
     };
-  }, [user, dispatch]); // user değiştiğinde veya component mount edildiğinde çalışır
+  }, [user, loading, dispatch]); // loading bağımlılığı eklendi
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.id]: e.target.value });
@@ -50,17 +51,45 @@ const UserProfile = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    dispatch(clearAuthError()); // Yeni istekten önce hatayı temizle
+    dispatch(clearAuthError());
     dispatch(clearAuthMessage());
-    dispatch(updateUserProfile(formData));
+    
+    // Backend'e gönderilecek veri formatını ayarla
+    const updateData = {
+      username: formData.username,
+      first_name: formData.firstName, // Backend'e uygun isim
+      last_name: formData.lastName,   // Backend'e uygun isim
+      address: formData.address,
+      phone_number: formData.phoneNumber, // Backend'e uygun isim
+    };
+
+    dispatch(updateUserProfile(updateData));
   };
 
-  if (loading && !user) {
-    return <div className="text-center py-8">Profil yükleniyor...</div>;
+  // Yükleme durumunda spinner göster
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <LoadingSpinner message="Profil yükleniyor..." />
+      </div>
+    );
   }
 
+  // Hata durumunda veya kullanıcı objesi yoksa (yükleme bittiğinde)
   if (error && !user) {
     return <div className="text-center py-8 text-red-500">Profil bilgileri yüklenirken hata oluştu: {error}</div>;
+  }
+
+  // Kullanıcı objesi hala yoksa (yükleme bittikten sonra bile), giriş yapmaya yönlendir
+  if (!user) {
+    return (
+      <div className="container mx-auto p-4 my-8 text-center">
+        <p className="text-lg text-gray-600 mb-4">Profilinizi görüntülemek için lütfen giriş yapın.</p>
+        <Link to="/login" className="text-blue-600 hover:underline">
+          Giriş Yap
+        </Link>
+      </div>
+    );
   }
 
   return (
@@ -118,7 +147,7 @@ const UserProfile = () => {
           />
 
           {loading ? (
-            <p className="text-center text-blue-600 mt-4">Güncelleniyor...</p>
+            <LoadingSpinner message="Güncelleniyor..." className="mt-4" /> // Spinner bileşenini kullan
           ) : (
             <Button type="submit" className="w-full mt-4">
               Profili Güncelle
@@ -128,7 +157,7 @@ const UserProfile = () => {
         <p className="text-center text-sm text-gray-600 mt-4">
           Şifrenizi değiştirmek için{' '}
           <button
-            onClick={() => navigate('/forgot-password')} // Şifre sıfırlama akışını kullanabiliriz
+            onClick={() => navigate('/forgot-password')}
             className="text-blue-600 hover:underline focus:outline-none"
           >
             buraya tıklayın

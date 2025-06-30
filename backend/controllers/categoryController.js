@@ -1,146 +1,88 @@
 // backend/controllers/categoryController.js
-
-const db = require('../config/db');
-const { AppError, NotFoundError, BadRequestError } = require('../errors/AppError'); // AppError'ın yolu doğru olduğundan emin olun
-
-// Yeni kategori oluşturma
-exports.createCategory = async (req, res, next) => {
-    const { name, description } = req.body; // description eklendi
-
-    try {
-        // Kategori adının benzersizliğini kontrol et
-        const [existingCategory] = await db.query('SELECT id FROM categories WHERE name = ?', [name]);
-        if (existingCategory.length > 0) {
-            return next(new BadRequestError('Bu kategori adı zaten mevcut.'));
-        }
-
-        const [result] = await db.query('INSERT INTO categories (name, description) VALUES (?, ?)', [name, description || null]);
-
-        res.status(201).json({
-            status: 'success',
-            message: 'Kategori başarıyla oluşturuldu.',
-            data: { id: result.insertId, name, description: description || null }
-        });
-
-    } catch (err) {
-        console.error('Kategori oluşturulurken hata oluştu:', err);
-        next(new AppError('Kategori oluşturulurken bir hata oluştu.', 500));
-    }
-};
+const db = require('../config/db'); // Veritabanı bağlantı dosyanız
 
 // Tüm kategorileri getir
-exports.getAllCategories = async (req, res, next) => {
-    try {
-        const [rows] = await db.query('SELECT id, name, description, created_at, updated_at FROM categories');
-        res.status(200).json({
-            status: 'success',
-            results: rows.length,
-            data: { categories: rows }
-        });
-    } catch (err) {
-        console.error('Kategoriler getirilirken hata oluştu:', err);
-        next(new AppError('Kategoriler getirilirken bir hata oluştu.', 500));
-    }
+exports.getAllCategories = async (req, res) => {
+  try {
+    // Veritabanı şemanızda (Dump20250626.sql) 'created_at' ve 'updated_at' sütunları olmadığı için
+    // sorgudan bu sütunları çıkardık.
+    const [rows] = await db.query('SELECT id, name, description FROM categories');
+    res.json(rows);
+  } catch (error) {
+    console.error('Kategoriler getirilirken hata oluştu:', error);
+    res.status(500).json({ message: 'Kategoriler getirilirken sunucu hatası oluştu.' });
+  }
 };
 
-// Belirli bir kategoriyi ID ile getir
-exports.getCategoryById = async (req, res, next) => {
-    const categoryId = req.params.id;
-
-    try {
-        const [rows] = await db.query('SELECT id, name, description, created_at, updated_at FROM categories WHERE id = ?', [categoryId]);
-        const category = rows[0];
-
-        if (!category) {
-            return next(new NotFoundError('Kategori bulunamadı.'));
-        }
-
-        res.status(200).json({
-            status: 'success',
-            data: { category }
-        });
-
-    } catch (err) {
-        console.error('Kategori getirilirken hata oluştu:', err);
-        next(new AppError('Kategori getirilirken bir hata oluştu.', 500));
+// Belirli bir kategoriyi ID'ye göre getir (İsteğe bağlı - şu an frontend'de kullanılmıyor)
+exports.getCategoryById = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [rows] = await db.query('SELECT id, name, description FROM categories WHERE id = ?', [id]);
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Kategori bulunamadı.' });
     }
+    res.json(rows[0]);
+  } catch (error) {
+    console.error(`ID'si ${id} olan kategori getirilirken hata oluştu:`, error);
+    res.status(500).json({ message: 'Kategori getirilirken sunucu hatası oluştu.' });
+  }
 };
 
-// Kategori güncelle
-exports.updateCategory = async (req, res, next) => {
-    const categoryId = req.params.id;
-    const { name, description } = req.body;
-
-    try {
-        // Güncellenecek kategori var mı kontrol et
-        const [existingCategory] = await db.query('SELECT id FROM categories WHERE id = ?', [categoryId]);
-        if (existingCategory.length === 0) {
-            return next(new NotFoundError('Güncellenecek kategori bulunamadı.'));
-        }
-
-        // Kategori adı değişiyorsa ve bu ad başka bir kategori tarafından kullanılıyorsa kontrol et
-        if (name !== undefined) {
-            const [duplicateCategory] = await db.query('SELECT id FROM categories WHERE name = ? AND id != ?', [name, categoryId]);
-            if (duplicateCategory.length > 0) {
-                return next(new BadRequestError('Bu kategori adı zaten başka bir kategori tarafından kullanılıyor.'));
-            }
-        }
-
-        // Güncelleme sorgusunu dinamik olarak oluştur
-        const updates = [];
-        const params = [];
-        if (name !== undefined) {
-            updates.push('name = ?');
-            params.push(name);
-        }
-        if (description !== undefined) { // description null da olabilir
-            updates.push('description = ?');
-            params.push(description);
-        }
-        if (updates.length === 0) {
-            return next(new BadRequestError('Güncellenecek en az bir alan sağlamalısınız (name veya description).'));
-        }
-
-        params.push(categoryId);
-
-        await db.query(`UPDATE categories SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, params);
-
-        res.status(200).json({
-            status: 'success',
-            message: 'Kategori başarıyla güncellendi.'
-        });
-
-    } catch (err) {
-        console.error('Kategori güncellenirken hata oluştu:', err);
-        next(new AppError('Kategori güncellenirken bir hata oluştu.', 500));
+// Yeni kategori oluştur (Admin işlemi)
+exports.createCategory = async (req, res) => {
+  const { name, description } = req.body;
+  // TODO: Admin yetkilendirme kontrolü eklenecek
+  if (!name) {
+    return res.status(400).json({ message: 'Kategori adı gereklidir.' });
+  }
+  try {
+    const [result] = await db.query('INSERT INTO categories (name, description) VALUES (?, ?)', [name, description]);
+    res.status(201).json({ id: result.insertId, name, description, message: 'Kategori başarıyla oluşturuldu.' });
+  } catch (error) {
+    console.error('Kategori oluşturulurken hata oluştu:', error);
+    if (error.code === 'ER_DUP_ENTRY') { // Duplicate entry for unique fields (e.g., category name)
+        return res.status(409).json({ message: 'Bu kategori adı zaten mevcut.' });
     }
+    res.status(500).json({ message: 'Kategori oluşturulurken sunucu hatası oluştu.' });
+  }
 };
 
-// Kategori sil
-exports.deleteCategory = async (req, res, next) => {
-    const categoryId = req.params.id;
-
-    try {
-        // Kategoriye bağlı ürün olup olmadığını kontrol et
-        const [products] = await db.query('SELECT id FROM products WHERE category_id = ?', [categoryId]);
-        if (products.length > 0) {
-            return next(new BadRequestError('Bu kategoriye bağlı ürünler olduğu için silinemez. Önce ürünleri silin veya başka bir kategoriye taşıyın.'));
-        }
-
-        const [result] = await db.query('DELETE FROM categories WHERE id = ?', [categoryId]);
-
-        if (result.affectedRows === 0) {
-            return next(new NotFoundError('Silinecek kategori bulunamadı.'));
-        }
-
-        res.status(204).json({
-            status: 'success',
-            data: null,
-            message: 'Kategori başarıyla silindi.'
-        });
-
-    } catch (err) {
-        console.error('Kategori silinirken hata oluştu:', err);
-        next(new AppError('Kategori silinirken bir hata oluştu.', 500));
+// Kategoriyi güncelle (Admin işlemi)
+exports.updateCategory = async (req, res) => {
+  const { id } = req.params;
+  const { name, description } = req.body;
+  // TODO: Admin yetkilendirme kontrolü eklenecek
+  if (!name) {
+    return res.status(400).json({ message: 'Kategori adı gereklidir.' });
+  }
+  try {
+    const [result] = await db.query('UPDATE categories SET name = ?, description = ? WHERE id = ?', [name, description, id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Kategori bulunamadı veya güncellenecek veri yok.' });
     }
+    res.json({ id, name, description, message: 'Kategori başarıyla güncellendi.' });
+  } catch (error) {
+    console.error(`ID'si ${id} olan kategori güncellenirken hata oluştu:`, error);
+    if (error.code === 'ER_DUP_ENTRY') {
+        return res.status(409).json({ message: 'Bu kategori adı zaten mevcut.' });
+    }
+    res.status(500).json({ message: 'Kategori güncellenirken sunucu hatası oluştu.' });
+  }
+};
+
+// Kategoriyi sil (Admin işlemi)
+exports.deleteCategory = async (req, res) => {
+  const { id } = req.params;
+  // TODO: Admin yetkilendirme kontrolü eklenecek
+  try {
+    const [result] = await db.query('DELETE FROM categories WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Kategori bulunamadı.' });
+    }
+    res.json({ message: 'Kategori başarıyla silindi.' });
+  } catch (error) {
+    console.error(`ID'si ${id} olan kategori silinirken hata oluştu:`, error);
+    res.status(500).json({ message: 'Kategori silinirken sunucu hatası oluştu.' });
+  }
 };
