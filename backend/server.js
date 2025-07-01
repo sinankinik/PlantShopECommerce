@@ -4,11 +4,11 @@ const express = require('express');
 const dotenv = require('dotenv');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
-const cors = require('cors'); // CORS middleware
+const cors = require('cors');
 const path = require('path'); // Node.js'in 'path' modülünü import edin (dosya yolları için)
 
 const db = require('./config/db'); // MySQL bağlantısı
-const redisClient = require('./config/redis'); // Yeni: Redis istemcisini import et
+const redisClient = require('./config/redis'); // Redis istemcisini import et
 
 // --- Rota Dosyalarını Import Edin ---
 const authRoutes = require('./routes/authRoutes');
@@ -73,6 +73,8 @@ app.use(express.urlencoded({ extended: true })); // URL-encoded body parser
 
 
 // Public klasörünü statik dosyalar için sun
+// NOT: Resimleriniz /backend/public/uploads/products içine kaydedildiğinden,
+// bu tek bir satır, tüm public klasörü içindeki her şeyi (dolayısıyla uploads klasörünü de) sunar.
 app.use(express.static(path.join(__dirname, 'public')));
 
 if (process.env.NODE_ENV === 'development') {

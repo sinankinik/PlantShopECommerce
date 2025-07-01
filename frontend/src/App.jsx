@@ -1,9 +1,14 @@
-// src/App.jsx - Güncellenmiş ve Tam Hali (Değişiklik olmaması gereken yerlerde notlar var)
+// src/App.jsx
 
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { fetchCurrentUser } from './features/auth/authSlice';
+
+// Toast kütüphanesini import edin
+import { ToastContainer } from 'react-toastify';
+// Toast CSS stilini import edin (önemli!)
+import 'react-toastify/dist/ReactToastify.css';
 
 // Genel Sayfalar
 import HomePage from './pages/HomePage';
@@ -35,7 +40,7 @@ import ProductManagement from './pages/Admin/ProductManagement';
 import CategoryManagement from './pages/Admin/CategoryManagement';
 
 // Layout Bileşenleri
-import MainLayout from './components/layout/MainLayout'; // Yeni MainLayout bileşenini import et
+import MainLayout from './components/layout/MainLayout'; // Yeni MainLayout bileşenini import edin
 
 // Koruma Bileşenleri
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -51,6 +56,23 @@ function App() {
 
   return (
     <Router>
+      {/* ToastContainer'ı BURAYA ekliyoruz. 
+        Bu, uygulamanın herhangi bir yerinden çağrılan toast bildirimlerinin
+        ekranda görünmesini sağlayan ana kapsayıcıdır.
+        Genellikle <Router> veya <Routes> bileşeninin hemen altına yerleştirilir.
+      */}
+      <ToastContainer
+        position="top-right" // Bildirimlerin ekranın sağ üst köşesinde görünmesini sağlar
+        autoClose={5000} // Bildirimlerin 5 saniye sonra otomatik kapanmasını sağlar
+        hideProgressBar={false} // İlerleme çubuğunu gizlemez
+        newestOnTop={false} // Yeni bildirimlerin en üstte mi yoksa en altta mı görüneceğini belirler
+        closeOnClick // Bildirime tıklandığında kapanmasını sağlar
+        rtl={false} // Sağdan sola metin yönünü devre dışı bırakır
+        pauseOnFocusLoss // Pencere odağı kaybedildiğinde bildirimin otomatik kapanmasını duraklatır
+        draggable // Bildirimlerin sürüklenebilir olmasını sağlar
+        pauseOnHover // Fare bildirimin üzerindeyken otomatik kapanmayı duraklatır
+      />
+
       <Routes>
         {/*
           MainLayout bileşenini kullanarak Sidebar, Header ve Footer'ın

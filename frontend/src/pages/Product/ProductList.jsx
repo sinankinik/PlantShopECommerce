@@ -3,21 +3,18 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchProducts, clearProductError } from '../../features/product/productSlice';
-// Kategori slice'ı ProductList'ten kaldırılabilir, Sidebar'da çekilecek
-// import { fetchCategories, clearCategoryError } from '../../features/category/categorySlice'; 
-import { Link, useLocation } from 'react-router-dom'; // useLocation'ı import et
+import { fetchCategories, clearCategoryError } from '../../features/category/categorySlice'; 
+import { Link, useLocation } from 'react-router-dom';
 import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 
 const ProductList = () => {
     const dispatch = useDispatch();
-    const location = useLocation(); // URL'den parametreleri almak için
+    const location = useLocation();
 
     const { items: products, loading: productsLoading, error: productsError, pagination } = useSelector((state) => state.products);
-    // categories state'ini buradan kaldırıyoruz, Sidebar'da yönetilecek
-    // const { items: categories, loading: categoriesLoading, error: categoriesError } = useSelector((state) => state.categories);
+    const { items: categories, loading: categoriesLoading, error: categoriesError } = useSelector((state) => state.categories);
 
-    // URL'deki 'category' parametresini al
     const queryParams = new URLSearchParams(location.search);
     const categoryParam = queryParams.get('category');
 
@@ -25,11 +22,10 @@ const ProductList = () => {
     const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
-        // Kategorileri ProductList'ten çekme artık Sidebar'da yapılacak
-        // dispatch(fetchCategories()); 
+        dispatch(fetchCategories());
         return () => {
-            // dispatch(clearCategoryError()); // Artık burada temizlemeye gerek yok
             dispatch(clearProductError());
+            dispatch(clearCategoryError());
         };
     }, [dispatch]);
 
@@ -38,7 +34,6 @@ const ProductList = () => {
             page: currentPage,
             limit: 10,
         };
-        // Eğer URL'de bir kategori parametresi varsa, onu kullan
         if (categoryParam) {
             params.category = categoryParam;
         }
@@ -46,16 +41,22 @@ const ProductList = () => {
             params.search = searchTerm;
         }
         dispatch(fetchProducts(params));
-    }, [dispatch, categoryParam, searchTerm, currentPage]); // categoryParam'ı dependency'lere ekle
+    }, [dispatch, categoryParam, searchTerm, currentPage]);
 
     const handleSearchChange = (e) => {
         setSearchTerm(e.target.value);
-        setCurrentPage(1); // Arama değişince sayfayı sıfırla
+        setCurrentPage(1);
     };
 
     const handlePageChange = (page) => {
         setCurrentPage(page);
     };
+
+    const currentCategory = categories.find(cat => cat.slug === categoryParam || String(cat.id) === categoryParam);
+
+    const pageTitle = categoryParam 
+        ? (currentCategory ? `Kategori: ${currentCategory.name}` : 'Kategori Yükleniyor...')
+        : 'Tüm Ürünler';
 
     if (productsLoading && products.length === 0) {
         return <div className="text-center py-8">Ürünler yükleniyor...</div>;
@@ -65,25 +66,22 @@ const ProductList = () => {
         return <div className="text-center py-8 text-red-500">Ürünler yüklenirken hata oluştu: {productsError}</div>;
     }
 
-    // Kategorilerle ilgili hata mesajını burada göstermeyeceğiz, Sidebar kendi hatasını yönetecek
-    // if (categoriesError) {
-    //   return <div className="text-center py-8 text-red-500">Kategoriler yüklenirken hata oluştu: {categoriesError}</div>;
-    // }
+    if (categoriesLoading && !currentCategory && categoryParam) {
+        return <div className="text-center py-8">Kategoriler yükleniyor...</div>;
+    }
+
+    if (categoriesError) {
+        return <div className="text-center py-8 text-red-500">Kategoriler yüklenirken hata oluştu: {categoriesError}</div>;
+    }
 
     return (
-        <div className="container mx-auto p-4 flex"> {/* Flex container for sidebar and content */}
-            {/* Sidebar'ı buraya dahil edeceğiz */}
-            {/* Sidebar'ın flex yapısı ile ilgili genel Layout bileşeninizde daha iyi yönetilmesi önerilir */}
-            {/* Geçici olarak direkt buraya import edebiliriz */}
-            {/* <Sidebar />  -> Bu satırı şu anlık yorumda bırakalım, Layout'a ekleyeceğiz */}
-
-            <div className="flex-1 ml-4"> {/* Ürün listesi için sağ tarafı kapla */}
+        <div className="container mx-auto p-4 flex">
+            <div className="flex-1 ml-4">
                 <h1 className="text-3xl font-bold text-center my-8">
-                    {categoryParam ? `Kategori: ${categoryParam}` : 'Tüm Ürünler'}
+                    {pageTitle}
                 </h1>
 
-                <div className="flex flex-col md:flex-row justify-end items-center mb-6 space-y-4 md:space-y-0"> {/* Kategori filtresini kaldırdık */}
-                    {/* Arama Kutusu */}
+                <div className="flex flex-col md:flex-row justify-end items-center mb-6 space-y-4 md:space-y-0">
                     <div className="w-full md:w-1/3">
                         <Input
                             id="search"
@@ -105,7 +103,7 @@ const ProductList = () => {
                             <div key={product.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300">
                                 <Link to={`/products/${product.id}`}>
                                     <img
-                                        src={product.image_url || 'https://via.placeholder.com/250'}
+                                        src={product.image_url ? `http://localhost:5000/${product.image_url.replace(/\\/g, '/')}` : 'https://via.placeholder.com/250'}
                                         alt={product.name}
                                         className="w-full h-48 object-cover"
                                     />

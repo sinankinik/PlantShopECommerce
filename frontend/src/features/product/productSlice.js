@@ -51,10 +51,14 @@ export const updateProduct = createAsyncThunk(
   'products/updateProduct',
   async ({ productId, productData }, { rejectWithValue }) => {
     try {
-      const response = await api.put(`/products/${productId}`, productData);
+      // BURAYI DÜZELTİYORUZ: api.put yerine api.patch kullanıyoruz
+      const response = await api.patch(`/products/${productId}`, productData);
+      
       // Backend'den güncellenmiş ürünü veya sadece başarı mesajını alabilirsiniz.
-      // Eğer güncellenmiş ürünü döndürüyorsa, onu kullanın.
-      return { id: productId, ...productData }; // Basitçe gönderilen veriyi döndürüyoruz
+      // Şu anki backend'iniz sadece mesaj döndürdüğü için, 
+      // frontend'deki local state'i güncellemek adına gönderilen veriyi döndürüyoruz.
+      // İdealde, backend'in güncel ürünü tam olarak dönmesi daha iyidir.
+      return { id: productId, ...Object.fromEntries(productData) }; // FormData'yı objeye çeviriyoruz
     } catch (error) {
       return rejectWithValue(error.response?.data?.message || error.message);
     }
