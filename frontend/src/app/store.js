@@ -6,6 +6,11 @@ import categoryReducer from '../features/category/categorySlice'; // Yeni eklene
 import cartReducer from '../features/cart/cartSlice';
 import orderReducer from '../features/order/orderSlice';
 import reviewsReducer from '../features/review/reviewsSlice';
+import userReducer from '../features/user/userSlice';
+import reportReducer from '../features/report/reportSlice';
+import orderManagementReducer from '../features/order/orderManagementSlice';
+import couponManagementReducer from '../features/coupon/couponManagementSlice';
+import promotionReducer from '../features/promotion/promotionSlice';
 
 export const store = configureStore({
   reducer: {
@@ -15,5 +20,10 @@ export const store = configureStore({
     cart: cartReducer,
     orders: orderReducer,
     reviews: reviewsReducer,
+    users: userReducer,
+    report: reportReducer,
+    orderManagement: orderManagementReducer,
+    couponManagement: couponManagementReducer,
+    promotions: promotionReducer,
   },
 });

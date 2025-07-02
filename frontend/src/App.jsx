@@ -1,4 +1,4 @@
-// src/App.jsx
+// frontend/src/App.jsx
 
 import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
@@ -36,89 +36,85 @@ import CheckoutPage from './pages/Checkout/CheckoutPage';
 import OrderSuccessPage from './pages/Order/OrderSuccessPage';
 
 // Admin Sayfaları (Admin Rotaları)
+import AdminDashboard from './pages/Admin/AdminDashboard';
 import ProductManagement from './pages/Admin/ProductManagement';
 import CategoryManagement from './pages/Admin/CategoryManagement';
+import UserManagement from './pages/Admin/UserManagement';
+import ReportDashboard from './pages/Admin/ReportDashboard';
+import OrderManagement from './pages/Admin/OrderManagement';
+import CouponManagement from './pages/Admin/CouponManagement';
+import PromotionManagement from './pages/Admin/PromotionManagement';
 
 // Layout Bileşenleri
 import MainLayout from './components/layout/MainLayout'; // Yeni MainLayout bileşenini import edin
+import AdminDashboardLayout from './components/layout/AdminDashboardLayout'; // <-- YOL GÜNCELLENDİ
 
 // Koruma Bileşenleri
 import ProtectedRoute from './components/common/ProtectedRoute';
-import AdminRoute from './components/common/AdminRoute';
+import AdminRoute from './components/common/AdminRoute'; // Eğer özel bir AdminRoute kullanıyorsanız
+import AuthGuard from './guards/AuthGuard';
 
 function App() {
-  const dispatch = useDispatch();
+    const dispatch = useDispatch();
 
-  useEffect(() => {
-    // Uygulama yüklendiğinde mevcut kullanıcıyı çek
-    dispatch(fetchCurrentUser());
-  }, [dispatch]);
+    useEffect(() => {
+        dispatch(fetchCurrentUser());
+    }, [dispatch]);
 
-  return (
-    <Router>
-      {/* ToastContainer'ı BURAYA ekliyoruz. 
-        Bu, uygulamanın herhangi bir yerinden çağrılan toast bildirimlerinin
-        ekranda görünmesini sağlayan ana kapsayıcıdır.
-        Genellikle <Router> veya <Routes> bileşeninin hemen altına yerleştirilir.
-      */}
-      <ToastContainer
-        position="top-right" // Bildirimlerin ekranın sağ üst köşesinde görünmesini sağlar
-        autoClose={5000} // Bildirimlerin 5 saniye sonra otomatik kapanmasını sağlar
-        hideProgressBar={false} // İlerleme çubuğunu gizlemez
-        newestOnTop={false} // Yeni bildirimlerin en üstte mi yoksa en altta mı görüneceğini belirler
-        closeOnClick // Bildirime tıklandığında kapanmasını sağlar
-        rtl={false} // Sağdan sola metin yönünü devre dışı bırakır
-        pauseOnFocusLoss // Pencere odağı kaybedildiğinde bildirimin otomatik kapanmasını duraklatır
-        draggable // Bildirimlerin sürüklenebilir olmasını sağlar
-        pauseOnHover // Fare bildirimin üzerindeyken otomatik kapanmayı duraklatır
-      />
+    return (
+        <Router>
+            <ToastContainer
+                position="top-right"
+                autoClose={5000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+            />
 
-      <Routes>
-        {/*
-          MainLayout bileşenini kullanarak Sidebar, Header ve Footer'ın
-          görünmesini istediğimiz rotaları sarmalıyoruz.
-          Bu, MainLayout içinde Header, Sidebar, ana içerik (Outlet ile)
-          ve Footer'ın render edilmesini sağlar.
-        */}
-        <Route path="/" element={<MainLayout />}>
-          <Route index element={<HomePage />} /> {/* Ana sayfa - URL '/' olduğunda HomePage render edilir */}
-          <Route path="products" element={<ProductsPage />} /> {/* URL '/products' olduğunda ProductsPage render edilir */}
-          <Route path="products/:productId" element={<ProductDetail />} /> {/* URL '/products/123' olduğunda ProductDetail render edilir */}
-          <Route path="cart" element={<CartPage />} /> {/* URL '/cart' olduğunda CartPage render edilir */}
-          
-          {/* Kullanıcılar İçin Korunan Rotalar (Sidebar ile birlikte görünmesini istiyorsanız) */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="/profile" element={<UserProfile />} />
-            <Route path="/my-orders" element={<OrdersPage />} />
-            <Route path="/my-orders/:id" element={<OrderDetailPage />} />
-            <Route path="/checkout" element={<CheckoutPage />} />
-            <Route path="/order-success/:orderId" element={<OrderSuccessPage />} />
-          </Route>
-        </Route>
+            <Routes>
+                <Route path="/" element={<MainLayout />}>
+                    <Route index element={<HomePage />} />
+                    <Route path="products" element={<ProductsPage />} />
+                    <Route path="products/:productId" element={<ProductDetail />} />
+                    <Route path="cart" element={<CartPage />} />
 
-        {/*
-          Header ve Footer'ı içermeyen veya farklı bir layout yapısı gerektiren rotalar.
-          Örneğin Login, Register gibi tam ekran sayfalar. Bu rotalar MainLayout dışında kalır.
-        */}
-        <Route path="/register" element={<Register />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password/:token" element={<ResetPassword />} />
-        <Route path="/verify-email/:token" element={<VerifyEmail />} />
+                    <Route element={<ProtectedRoute />}>
+                        <Route path="/profile" element={<UserProfile />} />
+                        <Route path="/my-orders" element={<OrdersPage />} />
+                        <Route path="/my-orders/:id" element={<OrderDetailPage />} />
+                        <Route path="/checkout" element={<CheckoutPage />} />
+                        <Route path="/order-success/:orderId" element={<OrderSuccessPage />} />
+                    </Route>
+                </Route>
 
-        {/* Adminler İçin Korunan Rotalar (AdminRoute içinde kendi layout'u olabilir veya MainLayout dışında kalabilir) */}
-        {/* Genellikle admin panellerinin farklı bir layout'u olduğu için MainLayout dışında tutmak iyi bir uygulamadır. */}
-        <Route element={<AdminRoute />}>
-          <Route path="/admin/products" element={<ProductManagement />} />
-          <Route path="/admin/categories" element={<CategoryManagement />} />
-          {/* Gelecekteki diğer admin rotaları buraya eklenebilir */}
-        </Route>
+                <Route path="/register" element={<Register />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password/:token" element={<ResetPassword />} />
+                <Route path="/verify-email/:token" element={<VerifyEmail />} />
 
-        {/* Eşleşmeyen tüm rotalar için 404 Not Found sayfası */}
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </Router>
-  );
+                {/* Adminler İçin Korunan Rotalar */}
+                <Route element={<AuthGuard allowedRoles={['admin']} />}>
+                    <Route path="/admin" element={<AdminDashboardLayout />}> {/* <-- YOL GÜNCELLENDİ */}
+                        <Route index element={<AdminDashboard />} />
+                        <Route path="products" element={<ProductManagement />} />
+                        <Route path="users" element={<UserManagement />} />
+                        <Route path="categories" element={<CategoryManagement />} />
+                        <Route path="reports" element={<ReportDashboard />} />
+                        <Route path="orders" element={<OrderManagement />} />
+                        <Route path="coupons" element={<CouponManagement />} />
+                        <Route path="promotion" element={<PromotionManagement />} />
+                    </Route>
+                </Route>
+
+                <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+        </Router>
+    );
 }
 
 export default App;
