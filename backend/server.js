@@ -101,7 +101,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/cart', cartRoutes);
 
 // Yorum rotalarını ekle
-app.use('/api/reviews', reviewRoutes);
+app.use('/api/reviews', reviewRoutes); // <-- BU SATIRIN OLDUĞUNDAN EMİN OLUN!
 
 // Kupon rotalarını ekle
 app.use('/api/coupons', couponRoutes);

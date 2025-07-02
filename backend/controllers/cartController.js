@@ -31,7 +31,7 @@ const getUserList = async (userId, type) => {
 };
 
 
-// Belirli bir türdeki listeyi (sepeti/istek listesini) getir
+// Belirli bir türdeki listeyi (sepeti/istek listesini) getir (Kullanıcı için)
 exports.getList = async (req, res, next) => {
     try {
         const userId = req.user.id;
@@ -41,7 +41,7 @@ exports.getList = async (req, res, next) => {
 
         // product_variant_id'ye göre join ekledik ve varyant bilgilerini de çektik
         const [listItems] = await db.query(
-            `SELECT 
+            `SELECT
                 ci.id as cartItemId,
                 ci.product_id,
                 p.name as product_name,
@@ -98,8 +98,8 @@ exports.getList = async (req, res, next) => {
                 total_item_price: itemCalculatedPrice,
                 product_stock_quantity: item.product_stock_quantity,
                 product_variant_id: item.product_variant_id,
-                variant_name: item.product_variant_id ? 
-                              `${item.variant_color ? item.variant_color + ' ' : ''}${item.variant_size ? item.variant_size : ''}`.trim() : null // Varyant adı oluştur
+                variant_name: item.product_variant_id ?
+                                  `${item.variant_color ? item.variant_color + ' ' : ''}${item.variant_size ? item.variant_size : ''}`.trim() : null // Varyant adı oluştur
             };
         });
 
@@ -122,7 +122,7 @@ exports.getList = async (req, res, next) => {
     }
 };
 
-// Listeye ürün ekle (veya miktarını güncelle)
+// Listeye ürün ekle (veya miktarını güncelle) (Kullanıcı için)
 exports.addItemToList = async (req, res, next) => {
     try {
         const userId = req.user.id;
@@ -179,7 +179,7 @@ exports.addItemToList = async (req, res, next) => {
             // Ürün listede varsa miktarını güncelle
             const existingQuantity = listItemRows[0].quantity;
             cartItemId = listItemRows[0].id;
-            
+
             if (listType === 'shopping_cart') {
                 finalQuantity = existingQuantity + quantity;
                 // Güncellenmiş miktar için stok kontrolü
@@ -206,14 +206,14 @@ exports.addItemToList = async (req, res, next) => {
 
         // Güncellenmiş veya yeni eklenen öğeyi geri döndür
         const [updatedItemRows] = await db.query(
-            `SELECT 
+            `SELECT
                 ci.id as cartItemId,
                 ci.product_id,
                 p.name as product_name,
                 p.image_url as image_url,
                 ci.quantity,
-                p.price as price, 
-                ci.price_at_addition, 
+                p.price as price,
+                ci.price_at_addition,
                 (ci.quantity * ci.price_at_addition) as itemTotalPrice,
                 p.stock_quantity as product_stock_quantity,
                 pv.id as product_variant_id,
@@ -240,7 +240,7 @@ exports.addItemToList = async (req, res, next) => {
             total_item_price: parseFloat(updatedCartItem.itemTotalPrice),
             product_stock_quantity: updatedCartItem.product_stock_quantity,
             product_variant_id: updatedCartItem.product_variant_id,
-            variant_name: updatedCartItem.product_variant_id ? 
+            variant_name: updatedCartItem.product_variant_id ?
                           `${updatedCartItem.variant_color ? updatedCartItem.variant_color + ' ' : ''}${updatedCartItem.variant_size ? updatedCartItem.variant_size : ''}`.trim() : null
         };
 
@@ -257,7 +257,7 @@ exports.addItemToList = async (req, res, next) => {
     }
 };
 
-// Listeden ürün çıkar
+// Listeden ürün çıkar (Kullanıcı için)
 exports.removeItemFromList = async (req, res, next) => {
     try {
         const userId = req.user.id;
@@ -269,8 +269,8 @@ exports.removeItemFromList = async (req, res, next) => {
         // Kullanıcının listesinin öğesini bul ve doğru kullanıcıya/listeye ait olduğunu doğrula
         const [itemRows] = await db.query(
             `SELECT ci.id, c.user_id, c.type
-             FROM cart_items ci 
-             JOIN carts c ON ci.cart_id = c.id 
+             FROM cart_items ci
+             JOIN carts c ON ci.cart_id = c.id
              WHERE ci.id = ? AND c.user_id = ? AND c.type = ?`,
             [cartItemId, userId, listType]
         );
@@ -292,7 +292,7 @@ exports.removeItemFromList = async (req, res, next) => {
     }
 };
 
-// Listedeki ürün miktarını güncelle
+// Listedeki ürün miktarını güncelle (Kullanıcı için)
 exports.updateListItemQuantity = async (req, res, next) => {
     try {
         const userId = req.user.id;
@@ -309,8 +309,8 @@ exports.updateListItemQuantity = async (req, res, next) => {
         // Kullanıcının listesinin öğesini bul ve doğru kullanıcıya/listeye ait olduğunu doğrula
         const [itemRows] = await db.query(
             `SELECT ci.id, ci.product_id, ci.product_variant_id, c.user_id, c.type
-             FROM cart_items ci 
-             JOIN carts c ON ci.cart_id = c.id 
+             FROM cart_items ci
+             JOIN carts c ON ci.cart_id = c.id
              WHERE ci.id = ? AND c.user_id = ? AND c.type = ?`,
             [cartItemId, userId, listType]
         );
@@ -341,14 +341,14 @@ exports.updateListItemQuantity = async (req, res, next) => {
 
         // Güncellenen öğeyi geri döndür
         const [updatedItemResult] = await db.query(
-            `SELECT 
+            `SELECT
                 ci.id as cartItemId,
                 ci.product_id,
                 p.name as product_name,
                 p.image_url as image_url,
                 ci.quantity,
-                p.price as price, 
-                ci.price_at_addition, 
+                p.price as price,
+                ci.price_at_addition,
                 (ci.quantity * ci.price_at_addition) as itemTotalPrice,
                 p.stock_quantity as product_stock_quantity,
                 pv.id as product_variant_id,
@@ -375,7 +375,7 @@ exports.updateListItemQuantity = async (req, res, next) => {
             total_item_price: parseFloat(updatedCartItem.itemTotalPrice),
             product_stock_quantity: updatedCartItem.product_stock_quantity,
             product_variant_id: updatedCartItem.product_variant_id,
-            variant_name: updatedCartItem.product_variant_id ? 
+            variant_name: updatedCartItem.product_variant_id ?
                           `${updatedCartItem.variant_color ? updatedCartItem.variant_color + ' ' : ''}${updatedCartItem.variant_size ? updatedCartItem.variant_size : ''}`.trim() : null
         };
 
@@ -391,7 +391,7 @@ exports.updateListItemQuantity = async (req, res, next) => {
     }
 };
 
-// Belirli bir türdeki listeyi temizle (tüm öğelerini sil)
+// Belirli bir türdeki listeyi temizle (tüm öğelerini sil) (Kullanıcı için)
 exports.clearList = async (req, res, next) => {
     try {
         const userId = req.user.id;
@@ -420,7 +420,7 @@ exports.clearList = async (req, res, next) => {
     }
 };
 
-// Bir ürünü bir listeden diğerine taşıma (örn: istek listesinden sepete)
+// Bir ürünü bir listeden diğerine taşıma (örn: istek listesinden sepete) (Kullanıcı için)
 exports.moveItemBetweenLists = async (req, res, next) => {
     try {
         const userId = req.user.id;
@@ -442,7 +442,6 @@ exports.moveItemBetweenLists = async (req, res, next) => {
             return next(new NotFoundError('Taşınacak liste öğesi bulunamadı veya yetkiniz yok.'));
         }
         const sourceItem = sourceItemRows[0];
-        // sourceItem.cart_id'ye ihtiyacımız yok çünkü ci.id'yi kullanıyoruz
 
         if (sourceItem.quantity < quantity) {
             return next(new BadRequestError(`Taşınacak miktar (${quantity}) mevcut miktardan (${sourceItem.quantity}) fazla olamaz.`));
@@ -477,14 +476,14 @@ exports.moveItemBetweenLists = async (req, res, next) => {
                     const [productRows] = await db.query('SELECT stock_quantity FROM products WHERE id = ?', [sourceItem.product_id]);
                     stockQuantity = productRows[0]?.stock_quantity;
                 }
-                
+
                 if (newTargetQuantity > stockQuantity) {
                     return next(new BadRequestError(`Taşıma işlemiyle ${targetListType} listesindeki toplam miktar (${newTargetQuantity}) stoktan (${stockQuantity}) fazla olamaz.`));
                 }
             }
 
             await db.query('UPDATE cart_items SET quantity = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newTargetQuantity, targetCartItemId]);
-            
+
             // Kaynak listedeki öğeyi güncelle veya sil
             if (sourceItem.quantity === quantity) {
                 await db.query('DELETE FROM cart_items WHERE id = ?', [cartItemId]);
@@ -520,5 +519,192 @@ exports.moveItemBetweenLists = async (req, res, next) => {
     } catch (err) {
         console.error('Ürün listeler arası taşınırken hata oluştu:', err);
         return next(new AppError('Ürün listeler arası taşınırken bir hata oluştu.', 500));
+    }
+};
+
+// --- YENİ EKLENEN ADMIN FONKSİYONLARI ---
+
+// Admin: Tüm kullanıcıların alışveriş sepetlerini listele (özet)
+exports.getAllUserShoppingCarts = async (req, res, next) => {
+    const { page = 1, limit = 10, userId, userName } = req.query; // userId ve userName undefined gelebilir
+    const offset = (page - 1) * limit;
+    const listType = 'shopping_cart';
+
+    let query = `
+        SELECT
+            c.user_id,
+            u.username,
+            COUNT(ci.product_id) AS total_items,
+            SUM(ci.quantity * ci.price_at_addition) AS total_amount,
+            MAX(c.updated_at) AS last_updated
+        FROM carts c
+        JOIN users u ON c.user_id = u.id
+        LEFT JOIN cart_items ci ON c.id = ci.cart_id
+        WHERE c.type = ?
+    `;
+    let countQuery = `SELECT COUNT(DISTINCT c.user_id) AS totalCarts FROM carts c JOIN users u ON c.user_id = u.id WHERE c.type = ?`;
+
+    const queryParams = [listType];
+    const countParams = [listType];
+    const whereClauses = [];
+
+    // userId ve userName tanımlıysa ve 'undefined' stringi değilse filtreye ekle
+    if (userId && userId !== 'undefined') {
+        whereClauses.push('c.user_id = ?');
+        queryParams.push(userId);
+        countParams.push(userId);
+    }
+    if (userName && userName !== 'undefined') {
+        whereClauses.push('u.username LIKE ?');
+        queryParams.push(`%${userName}%`);
+        countParams.push(`%${userName}%`);
+    }
+
+    if (whereClauses.length > 0) {
+        query += ' AND ' + whereClauses.join(' AND ');
+        countQuery += ' AND ' + whereClauses.join(' AND ');
+    }
+
+    query += ` GROUP BY c.user_id, u.username ORDER BY last_updated DESC LIMIT ? OFFSET ?`;
+    queryParams.push(parseInt(limit), parseInt(offset));
+
+    try {
+        const [cartsSummary] = await db.query(query, queryParams);
+        const [totalCountResult] = await db.query(countQuery, countParams);
+        const totalCarts = totalCountResult[0].totalCarts;
+        
+        res.status(200).json({
+            status: 'success',
+            results: cartsSummary.length,
+            total: totalCarts,
+            data: {
+                carts: cartsSummary.map(cart => ({
+                    userId: cart.user_id,
+                    username: cart.username,
+                    totalItems: cart.total_items || 0,
+                    totalAmount: parseFloat(cart.total_amount || 0).toFixed(2),
+                    lastUpdated: cart.last_updated,
+                }))
+            }
+        });
+    } catch (err) {
+        console.error('Tüm kullanıcı alışveriş sepetleri getirilirken hata oluştu:', err);
+        return next(new AppError('Tüm kullanıcı alışveriş sepetleri getirilirken bir hata oluştu.', 500));
+    }
+};
+
+// Admin: Belirli bir kullanıcının alışveriş sepeti detaylarını getir
+exports.getUserShoppingCartDetails = async (req, res, next) => {
+    const { userId } = req.params;
+    const listType = 'shopping_cart'; // Sadece shopping_cart'ı getireceğiz
+
+    try {
+        const [cartHeader] = await db.query('SELECT id, user_id FROM carts WHERE user_id = ? AND type = ?', [userId, listType]);
+
+        if (cartHeader.length === 0) {
+            // Sepet yoksa veya boşsa, boş bir sepet objesi döndür
+            return res.status(200).json({
+                status: 'success',
+                message: 'Belirtilen kullanıcı için alışveriş sepeti bulunamadı veya boş.',
+                data: {
+                    cart: {
+                        userId: userId,
+                        items: [],
+                        totalAmount: '0.00',
+                    }
+                }
+            });
+        }
+
+        const cartId = cartHeader[0].id;
+
+        const [cartItems] = await db.query(`
+            SELECT
+                ci.product_id,
+                p.name AS product_name,
+                p.image_url AS product_image,
+                p.price,
+                ci.quantity,
+                p.stock_quantity AS product_stock,
+                ci.price_at_addition,
+                pv.id AS product_variant_id,
+                pv.color AS variant_color,
+                pv.size AS variant_size,
+                pv.material AS variant_material,
+                pv.sku AS variant_sku
+            FROM cart_items ci
+            JOIN products p ON ci.product_id = p.id
+            LEFT JOIN product_variants pv ON ci.product_variant_id = pv.id
+            WHERE ci.cart_id = ?
+        `, [cartId]);
+
+        const totalAmount = cartItems.reduce((sum, item) => sum + (parseFloat(item.price_at_addition) * item.quantity), 0);
+
+        res.status(200).json({
+            status: 'success',
+            data: {
+                cart: {
+                    userId: userId,
+                    cartId: cartId,
+                    items: cartItems.map(item => ({
+                        productId: item.product_id,
+                        productName: item.product_name,
+                        priceAtAddition: parseFloat(item.price_at_addition), // Sepete eklenme fiyatı
+                        currentPrice: parseFloat(item.price), // Ürünün güncel fiyatı
+                        quantity: item.quantity,
+                        productImage: item.product_image,
+                        productStock: item.product_stock,
+                        productVariantId: item.product_variant_id,
+                        variantName: item.product_variant_id ?
+                                  `${item.variant_color ? item.variant_color + ' ' : ''}${item.variant_size ? item.variant_size : ''}`.trim() : null
+                    })),
+                    totalAmount: parseFloat(totalAmount).toFixed(2),
+                }
+            }
+        });
+
+    } catch (err) {
+        console.error('Kullanıcı sepeti detayları getirilirken hata oluştu:', err);
+        return next(new AppError('Kullanıcı sepeti detayları getirilirken bir hata oluştu.', 500));
+    }
+};
+
+// Admin: Kullanıcının belirli bir türdeki sepetini boşalt (tüm öğeleri sil)
+exports.clearUserSpecificCart = async (req, res, next) => {
+    const { userId, listType } = req.params; // listType da URL'den gelecek
+
+    validateListType(listType); // URL'den gelen listType'ı doğrula
+
+    let connection;
+    try {
+        connection = await db.getConnection();
+        await connection.beginTransaction();
+
+        const [cartResult] = await connection.query('SELECT id FROM carts WHERE user_id = ? AND type = ?', [userId, listType]);
+        if (cartResult.length === 0) {
+            await connection.rollback();
+            return next(new NotFoundError(`Belirtilen kullanıcı için ${listType} listesi bulunamadı.`, 404));
+        }
+
+        const cartId = cartResult[0].id;
+
+        await connection.query('DELETE FROM cart_items WHERE cart_id = ?', [cartId]);
+
+        await connection.commit();
+
+        res.status(200).json({
+            status: 'success',
+            message: `Kullanıcı ${userId}'nin ${listType} listesi başarıyla boşaltıldı.`,
+            data: null
+        });
+
+    } catch (err) {
+        if (connection) {
+            await connection.rollback();
+        }
+        console.error(`Kullanıcı ${listType} listesi boşaltılırken hata oluştu:`, err);
+        return next(new AppError(`Kullanıcı ${listType} listesi boşaltılırken bir hata oluştu.`, 500));
+    } finally {
+        if (connection) connection.release();
     }
 };

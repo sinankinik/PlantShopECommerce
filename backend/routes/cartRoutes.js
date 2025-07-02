@@ -3,28 +3,48 @@
 const express = require('express');
 const router = express.Router();
 const cartController = require('../controllers/cartController');
-const { protect } = require('../middleware/authMiddleware'); // Kullanıcı kimlik doğrulama middleware'iniz
+const { protect, restrictTo } = require('../middleware/authMiddleware');
 
-// Tüm sepet/liste rotaları için koruma uygula
-router.use(protect); // Tüm aşağıdaki rotalar için kullanıcının giriş yapmış olması gerekecek
 
-// Belirli bir türdeki listeyi getir (örn: /api/cart/shopping_cart)
+// Tüm sepet/liste rotaları için koruma uygula (Kullanıcı rotaları)
+router.use(protect);
+
+// Kullanıcıya özel listeler için rotalar
+// GET /api/cart/:listType - Belirli bir türdeki listeyi getir (örn: /api/cart/shopping_cart)
 router.get('/:listType', cartController.getList);
 
-// Belirli bir türdeki listeye ürün ekle (POST /api/cart/shopping_cart/items)
+// POST /api/cart/:listType/items - Belirli bir türdeki listeye ürün ekle
 router.post('/:listType/items', cartController.addItemToList);
 
-// Belirli bir türdeki listeden ürün çıkar (DELETE /api/cart/shopping_cart/items/:cartItemId)
+// DELETE /api/cart/:listType/items/:cartItemId - Belirli bir türdeki listeden ürün çıkar
 router.delete('/:listType/items/:cartItemId', cartController.removeItemFromList);
 
-// Belirli bir türdeki listedeki ürün miktarını güncelle (PUT /api/cart/shopping_cart/items/:cartItemId)
-router.put('/:listType/items/:cartItemId', cartController.updateListItemQuantity); // <-- BURASI DÜZELTİLDİ: PATCH yerine PUT kullanıldı
+// PUT /api/cart/:listType/items/:cartItemId - Belirli bir türdeki listedeki ürün miktarını güncelle
+router.put('/:listType/items/:cartItemId', cartController.updateListItemQuantity);
 
-// Belirli bir türdeki listeyi temizle (DELETE /api/cart/shopping_cart/clear)
+// DELETE /api/cart/:listType/clear - Belirli bir türdeki listeyi temizle (tüm öğelerini sil)
 router.delete('/:listType/clear', cartController.clearList);
 
-// Bir ürünü bir listeden diğerine taşı (POST /api/cart/move/:cartItemId)
+// POST /api/cart/move/:cartItemId - Bir ürünü bir listeden diğerine taşı
 router.post('/move/:cartItemId', cartController.moveItemBetweenLists);
 
+
+// --- YENİ EKLENEN ADMIN ROTALLARI ---
+// Bu rotalar `/api/cart/admin/...` şeklinde erişilebilir olacak
+// Admin rotaları için 'restrictTo('admin')' middleware'ini kullanmayı unutmayın.
+
+
+// GET /api/cart/admin/shopping-carts - Tüm kullanıcıların alışveriş sepetlerini listele (özet)
+router.route('/admin/shopping-carts')
+    .get(restrictTo('admin'), cartController.getAllUserShoppingCarts);
+
+// GET /api/cart/admin/shopping-carts/:userId - Belirli bir kullanıcının alışveriş sepeti detaylarını getir
+router.route('/admin/shopping-carts/:userId')
+    .get(restrictTo('admin'), cartController.getUserShoppingCartDetails);
+
+// DELETE /api/cart/admin/:listType/:userId/clear - Belirli bir kullanıcının belirli bir türdeki sepetini boşalt
+// Örneğin: /api/cart/admin/shopping_cart/:userId/clear
+router.route('/admin/:listType/:userId/clear')
+    .delete(restrictTo('admin'), cartController.clearUserSpecificCart);
 
 module.exports = router;

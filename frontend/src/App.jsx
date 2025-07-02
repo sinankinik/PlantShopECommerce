@@ -44,6 +44,9 @@ import ReportDashboard from './pages/Admin/ReportDashboard';
 import OrderManagement from './pages/Admin/OrderManagement';
 import CouponManagement from './pages/Admin/CouponManagement';
 import PromotionManagement from './pages/Admin/PromotionManagement';
+import CartManagement from './pages/Admin/CartManagement';
+import EmailMarketingPage from './pages/Admin/EmailMarketingPage';
+import ReviewManagementPage from './pages/Admin/ReviewManagementPage';
 
 // Layout Bileşenleri
 import MainLayout from './components/layout/MainLayout'; // Yeni MainLayout bileşenini import edin
@@ -108,6 +111,9 @@ function App() {
                         <Route path="orders" element={<OrderManagement />} />
                         <Route path="coupons" element={<CouponManagement />} />
                         <Route path="promotion" element={<PromotionManagement />} />
+                        <Route path="cart-management" element={<CartManagement />} />
+                        <Route path="email-marketing" element={<EmailMarketingPage />} />
+                        <Route path="reviews" element={<ReviewManagementPage />} />
                     </Route>
                 </Route>
 

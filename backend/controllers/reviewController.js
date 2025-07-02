@@ -1,7 +1,9 @@
+// backend/controllers/reviewController.js
+
 const db = require('../config/db');
 const AppError = require('../errors/AppError');
 
-// Yeni yorum ve derecelendirme ekleme veya mevcut olanı güncelleme
+// Yeni yorum ve derecelendirme ekleme veya mevcut olanı güncelleme (Mevcut kodunuz)
 exports.createOrUpdateReview = async (req, res, next) => {
     const userId = req.user.id;
     const { productId } = req.params; // URL'den productId'yi al
@@ -58,7 +60,7 @@ exports.createOrUpdateReview = async (req, res, next) => {
     }
 };
 
-// Bir ürüne ait tüm yorumları ve ortalama derecelendirmeyi getir
+// Bir ürüne ait tüm yorumları ve ortalama derecelendirmeyi getir (Mevcut kodunuz)
 exports.getProductReviews = async (req, res, next) => {
     const { productId } = req.params;
 
@@ -76,10 +78,15 @@ exports.getProductReviews = async (req, res, next) => {
                 r.rating, 
                 r.comment, 
                 r.created_at, 
-                u.username as userName, -- u.name yerine u.username kullanıldı
-                u.email as userEmail
+                r.updated_at,
+                u.id as userId,
+                u.username as userName, 
+                u.email as userEmail,
+                p.id as productId,
+                p.name as productName
             FROM reviews r
             JOIN users u ON r.user_id = u.id
+            JOIN products p ON r.product_id = p.id
             WHERE r.product_id = ?
             ORDER BY r.created_at DESC`,
             [productId]
@@ -103,9 +110,15 @@ exports.getProductReviews = async (req, res, next) => {
                     rating: review.rating,
                     comment: review.comment,
                     createdAt: review.created_at,
+                    updatedAt: review.updated_at,
                     user: {
-                        name: review.userName, // userName olarak zaten geliyor
+                        id: review.userId,
+                        username: review.userName, 
                         email: review.userEmail
+                    },
+                    product: {
+                        id: review.productId,
+                        name: review.productName
                     }
                 }))
             }
@@ -117,27 +130,131 @@ exports.getProductReviews = async (req, res, next) => {
     }
 };
 
-// Kullanıcının bir ürüne yaptığı yorumu silme
-exports.deleteReview = async (req, res, next) => {
-    const userId = req.user.id;
-    const { reviewId } = req.params; // Silinecek yorumun ID'si
+// --- YENİ EKLENEN KOD: Tüm yorumları getir (Admin paneli için) ---
+exports.getAllReviews = async (req, res, next) => {
+    // Sayfalama ve filtreleme parametreleri
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const sortBy = req.query.sortBy || 'created_at'; // Sıralama kriteri
+    const sortOrder = req.query.sortOrder === 'asc' ? 'ASC' : 'DESC'; // Sıralama yönü
+    const search = req.query.search || ''; // Yorum içeriği veya kullanıcı adı/e-posta arama
+
+    let query = `
+        SELECT 
+            r.id, 
+            r.rating, 
+            r.comment, 
+            r.created_at, 
+            r.updated_at,
+            u.id as userId,
+            u.username as userName, 
+            u.email as userEmail,
+            p.id as productId,
+            p.name as productName
+        FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        JOIN products p ON r.product_id = p.id
+    `;
+    let countQuery = `
+        SELECT COUNT(*) as total FROM reviews r
+        JOIN users u ON r.user_id = u.id
+        JOIN products p ON r.product_id = p.id
+    `;
+    let whereClauses = [];
+    let queryParams = [];
+
+    if (search) {
+        whereClauses.push(`(r.comment LIKE ? OR u.username LIKE ? OR u.email LIKE ? OR p.name LIKE ?)`);
+        queryParams.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    if (whereClauses.length > 0) {
+        query += ` WHERE ` + whereClauses.join(' AND ');
+        countQuery += ` WHERE ` + whereClauses.join(' AND ');
+    }
+
+    // Sıralama
+    query += ` ORDER BY ${sortBy} ${sortOrder}`;
+
+    // Sayfalama
+    query += ` LIMIT ? OFFSET ?`;
+    queryParams.push(limit, offset);
 
     try {
-        // Yorumu bulan ve kullanıcının o yoruma sahip olup olmadığını doğrulayan sorgu
-        const [result] = await db.query(
-            'DELETE FROM reviews WHERE id = ? AND user_id = ?',
-            [reviewId, userId]
-        );
+        const [reviews] = await db.query(query, queryParams);
+        const [totalCountResult] = await db.query(countQuery, queryParams.slice(0, queryParams.length - 2)); // Limit/offset olmadan toplam sayıyı al
+
+        const totalReviews = totalCountResult[0].total;
+        const totalPages = Math.ceil(totalReviews / limit);
+
+        res.status(200).json({
+            status: 'success',
+            results: reviews.length,
+            data: {
+                reviews: reviews.map(review => ({
+                    id: review.id,
+                    rating: review.rating,
+                    comment: review.comment,
+                    createdAt: review.created_at,
+                    updatedAt: review.updated_at,
+                    user: {
+                        id: review.userId,
+                        username: review.userName, 
+                        email: review.userEmail
+                    },
+                    product: {
+                        id: review.productId,
+                        name: review.productName
+                    }
+                })),
+                pagination: {
+                    currentPage: page,
+                    limit: limit,
+                    totalPages: totalPages,
+                    totalItems: totalReviews
+                }
+            }
+        });
+
+    } catch (err) {
+        console.error('Tüm yorumlar getirilirken hata oluştu:', err);
+        return next(new AppError('Yorumlar getirilirken bir hata oluştu.', 500));
+    }
+};
+
+// Yorumu silme (Hem kullanıcı hem admin için. Admin için yetki kontrolü rotada yapılacak)
+exports.deleteReview = async (req, res, next) => {
+    const { reviewId } = req.params; // Silinecek yorumun ID'si
+    const userId = req.user ? req.user.id : null; // Eğer kullanıcı giriş yapmadıysa null
+    const userRole = req.user ? req.user.role : null;
+
+    try {
+        let query;
+        let queryParams;
+
+        if (userRole === 'admin') {
+            // Admin, herhangi bir yorumu silebilir
+            query = 'DELETE FROM reviews WHERE id = ?';
+            queryParams = [reviewId];
+        } else if (userId) {
+            // Kullanıcı, sadece kendi yorumunu silebilir
+            query = 'DELETE FROM reviews WHERE id = ? AND user_id = ?';
+            queryParams = [reviewId, userId];
+        } else {
+            return next(new AppError('Bu işlemi yapmak için yetkiniz yok.', 403));
+        }
+        
+        const [result] = await db.query(query, queryParams);
 
         if (result.affectedRows === 0) {
             return next(new AppError('Yorum bulunamadı veya bu yorumu silmeye yetkiniz yok.', 404));
         }
 
-        // Değişiklik burada! 204 yerine 200 OK ve mesajlı yanıt.
         res.status(200).json({
             status: 'success',
             message: 'Yorum başarıyla silindi.',
-            data: null // Veri döndürmeye gerek yoksa null kalabilir
+            data: null
         });
 
     } catch (err) {
@@ -145,3 +262,16 @@ exports.deleteReview = async (req, res, next) => {
         return next(new AppError('Yorum silinirken bir hata oluştu.', 500));
     }
 };
+
+// Admin'in bir yorumu onaylaması/reddetmesi (isteğe bağlı, henüz backend'de yok ama frontend'de düşünülebilir)
+// exports.updateReviewStatus = async (req, res, next) => {
+//     const { reviewId } = req.params;
+//     const { status } = req.body; // 'approved', 'rejected'
+//     try {
+//         await db.query('UPDATE reviews SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [status, reviewId]);
+//         res.status(200).json({ status: 'success', message: 'Yorum durumu güncellendi.' });
+//     } catch (err) {
+//         console.error('Yorum durumu güncellenirken hata oluştu:', err);
+//         return next(new AppError('Yorum durumu güncellenemedi.', 500));
+//     }
+// };

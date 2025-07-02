@@ -67,7 +67,6 @@ exports.getAllProducts = async (req, res, next) => {
         const cachedProducts = await redisClient.get(cacheKey);
 
         if (cachedProducts) {
-            console.log('Ürünler önbellekten getirildi.');
             return res.status(200).json({
                 status: 'success',
                 // JSON.parse ile string'i tekrar objeye dönüştür
@@ -142,7 +141,6 @@ exports.getAllProducts = async (req, res, next) => {
         // 3. Veritabanından çekilen veriyi önbelleğe kaydet (örn: 1 saat = 3600 saniye)
         await redisClient.setex(cacheKey, 3600, JSON.stringify(responseData));
 
-        console.log('Ürünler veritabanından getirildi ve önbelleğe alındı.');
         res.status(200).json({
             status: 'success',
             ...responseData,
